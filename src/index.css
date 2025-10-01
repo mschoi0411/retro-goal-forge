@@ -8,89 +8,62 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Retro Gaming Color Palette - Dark Mode First */
+    --background: 240 15% 8%;
+    --foreground: 180 100% 90%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 240 12% 12%;
+    --card-foreground: 180 100% 90%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 240 15% 10%;
+    --popover-foreground: 180 100% 90%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* Neon Purple Primary */
+    --primary: 270 100% 65%;
+    --primary-foreground: 240 15% 8%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* Neon Cyan Secondary */
+    --secondary: 180 100% 50%;
+    --secondary-foreground: 240 15% 8%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    /* Dark Muted */
+    --muted: 240 10% 20%;
+    --muted-foreground: 180 50% 60%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    /* Neon Pink Accent */
+    --accent: 320 100% 60%;
+    --accent-foreground: 240 15% 8%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    /* Neon Red Destructive */
+    --destructive: 0 100% 60%;
+    --destructive-foreground: 240 15% 8%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    /* Neon Green Success */
+    --success: 150 100% 50%;
+    --success-foreground: 240 15% 8%;
 
-    --radius: 0.5rem;
+    /* Neon Yellow Warning */
+    --warning: 45 100% 55%;
+    --warning-foreground: 240 15% 8%;
 
-    --sidebar-background: 0 0% 98%;
+    --border: 240 20% 25%;
+    --input: 240 15% 15%;
+    --ring: 270 100% 65%;
 
-    --sidebar-foreground: 240 5.3% 26.1%;
+    --radius: 0.25rem;
 
-    --sidebar-primary: 240 5.9% 10%;
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(270 100% 65%), hsl(320 100% 60%));
+    --gradient-secondary: linear-gradient(135deg, hsl(180 100% 50%), hsl(270 100% 65%));
+    --gradient-success: linear-gradient(135deg, hsl(150 100% 50%), hsl(180 100% 50%));
+    
+    /* Shadows with glow */
+    --shadow-neon: 0 0 20px hsl(270 100% 65% / 0.5), 0 0 40px hsl(270 100% 65% / 0.3);
+    --shadow-neon-hover: 0 0 30px hsl(270 100% 65% / 0.7), 0 0 60px hsl(270 100% 65% / 0.5);
+    --shadow-card: 0 8px 32px hsl(240 15% 0% / 0.6);
 
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
-  }
-
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 }
 
@@ -100,6 +73,72 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
+    font-family: 'DotGothic16', 'Press Start 2P', monospace;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Press Start 2P', monospace;
+    text-shadow: 0 0 10px currentColor;
+  }
+
+  /* Pixel Border Effect */
+  .pixel-border {
+    border: 3px solid;
+    border-image: repeating-linear-gradient(
+      90deg,
+      currentColor 0,
+      currentColor 4px,
+      transparent 4px,
+      transparent 8px
+    ) 3;
+    box-shadow: var(--shadow-card);
+  }
+
+  /* Neon Glow Effect */
+  .neon-glow {
+    box-shadow: var(--shadow-neon);
+    transition: var(--transition-smooth);
+  }
+
+  .neon-glow:hover {
+    box-shadow: var(--shadow-neon-hover);
+    transform: translateY(-2px);
+  }
+
+  /* Pixel Art Text */
+  .pixel-text {
+    font-family: 'Press Start 2P', monospace;
+    line-height: 1.8;
+    letter-spacing: 0.05em;
+  }
+
+  /* Korean Text */
+  .korean-text {
+    font-family: 'DotGothic16', monospace;
+    line-height: 1.6;
+  }
+
+  /* Retro Button */
+  .retro-button {
+    position: relative;
+    padding: 12px 24px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 12px;
+    text-transform: uppercase;
+    border: 3px solid currentColor;
+    background: var(--gradient-primary);
+    box-shadow: 4px 4px 0 0 hsl(var(--foreground) / 0.2);
+    transition: all 0.1s ease;
+  }
+
+  .retro-button:hover {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0 0 hsl(var(--foreground) / 0.2);
+  }
+
+  .retro-button:active {
+    transform: translate(4px, 4px);
+    box-shadow: none;
   }
 }
