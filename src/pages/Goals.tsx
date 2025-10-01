@@ -1,39 +1,181 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Plus, Check, Star, Calendar, TrendingUp } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 interface Goal {
-  id: number;
+  id: string;
   title: string;
   completed: boolean;
   progress: number;
   difficulty: number;
-  dueDate: string;
+  powder_reward: number;
+  due_date: string;
 }
 
 export default function Goals() {
-  const [goals, setGoals] = useState<Goal[]>([
-    { id: 1, title: "React 마스터하기", completed: false, progress: 65, difficulty: 3, dueDate: "2025-12-31" },
-    { id: 2, title: "매일 30분 운동", completed: true, progress: 100, difficulty: 2, dueDate: "2025-10-15" },
-    { id: 3, title: "책 10권 읽기", completed: false, progress: 40, difficulty: 2, dueDate: "2025-11-30" },
-    { id: 4, title: "영어 단어 1000개 암기", completed: false, progress: 25, difficulty: 3, dueDate: "2025-12-31" },
-  ]);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [newGoalTitle, setNewGoalTitle] = useState("");
+  const [newGoalDifficulty, setNewGoalDifficulty] = useState(1);
+  const [newGoalDueDate, setNewGoalDueDate] = useState("");
+  const [newGoalReward, setNewGoalReward] = useState(100);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    checkAuth();
+    loadGoals();
+  }, []);
+
+  const checkAuth = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) {
+      toast({
+        title: "로그인이 필요합니다",
+        description: "로그인 후 이용해주세요.",
+        variant: "destructive",
+      });
+      navigate("/auth");
+    }
+  };
+
+  const loadGoals = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const { data } = await supabase
+      .from("goals")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: false });
+
+    if (data) {
+      setGoals(data);
+    }
+  };
+
+  const toggleGoal = async (id: string, completed: boolean) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const goal = goals.find((g) => g.id === id);
+    if (!goal) return;
+
+    const newCompleted = !completed;
+    const { error } = await supabase
+      .from("goals")
+      .update({
+        completed: newCompleted,
+        progress: newCompleted ? 100 : goal.progress,
+      })
+      .eq("id", id);
+
+    if (error) {
+      toast({
+        title: "오류 발생",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (newCompleted) {
+      // Add powder reward
+      const { data: powderData } = await supabase
+        .from("user_powder")
+        .select("amount")
+        .eq("user_id", session.user.id)
+        .single();
+
+      if (powderData) {
+        await supabase
+          .from("user_powder")
+          .update({ amount: powderData.amount + goal.powder_reward })
+          .eq("user_id", session.user.id);
+      }
+
+      toast({
+        title: "목표 달성!",
+        description: `${goal.powder_reward} 가루를 획득했습니다!`,
+      });
+    }
+
+    loadGoals();
+  };
+
+  const addGoal = async () => {
+    if (!newGoalTitle.trim()) {
+      toast({
+        title: "제목을 입력해주세요",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) return;
+
+    setLoading(true);
+
+    const { error } = await supabase.from("goals").insert({
+      user_id: session.user.id,
+      title: newGoalTitle,
+      difficulty: newGoalDifficulty,
+      due_date: newGoalDueDate || null,
+      powder_reward: newGoalReward,
+    });
+
+    if (error) {
+      toast({
+        title: "오류 발생",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "목표 추가 완료!",
+      });
+      setNewGoalTitle("");
+      setNewGoalDifficulty(1);
+      setNewGoalDueDate("");
+      setNewGoalReward(100);
+      setOpen(false);
+      loadGoals();
+    }
+
+    setLoading(false);
+  };
 
   const completedCount = goals.filter((g) => g.completed).length;
   const remainingCount = goals.length - completedCount;
-
-  const toggleGoal = (id: number) => {
-    setGoals(goals.map((g) => (g.id === id ? { ...g, completed: !g.completed, progress: g.completed ? g.progress : 100 } : g)));
-  };
 
   return (
     <div className="min-h-screen px-4 py-8">
       <div className="container mx-auto max-w-4xl">
         <div className="mb-8 animate-slide-up">
           <h1 className="font-pixel text-2xl sm:text-3xl mb-4 text-foreground">나의 목표</h1>
-          
+
           <div className="flex flex-wrap gap-4 mb-6">
             <Card className="flex-1 min-w-[200px] bg-card/50 border-2 border-success">
               <CardContent className="p-4 flex items-center gap-3">
@@ -60,10 +202,76 @@ export default function Goals() {
             </Card>
           </div>
 
-          <Button variant="hero" size="lg" className="w-full sm:w-auto">
-            <Plus className="w-5 h-5" />
-            새로운 목표 추가
-          </Button>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button variant="hero" size="lg" className="w-full sm:w-auto">
+                <Plus className="w-5 h-5" />
+                새로운 목표 추가
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="font-pixel">새로운 목표 추가</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="title" className="font-korean">
+                    목표 제목
+                  </Label>
+                  <Input
+                    id="title"
+                    value={newGoalTitle}
+                    onChange={(e) => setNewGoalTitle(e.target.value)}
+                    placeholder="목표를 입력하세요"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="difficulty" className="font-korean">
+                    난이도 (★)
+                  </Label>
+                  <Input
+                    id="difficulty"
+                    type="number"
+                    min="1"
+                    max="5"
+                    value={newGoalDifficulty}
+                    onChange={(e) => setNewGoalDifficulty(Number(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="reward" className="font-korean">
+                    보상 가루
+                  </Label>
+                  <Input
+                    id="reward"
+                    type="number"
+                    min="1"
+                    value={newGoalReward}
+                    onChange={(e) => setNewGoalReward(Number(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="dueDate" className="font-korean">
+                    마감일
+                  </Label>
+                  <Input
+                    id="dueDate"
+                    type="date"
+                    value={newGoalDueDate}
+                    onChange={(e) => setNewGoalDueDate(e.target.value)}
+                  />
+                </div>
+                <Button
+                  onClick={addGoal}
+                  variant="hero"
+                  className="w-full"
+                  disabled={loading}
+                >
+                  {loading ? "추가 중..." : "목표 추가"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
 
         <div className="space-y-4 mb-12">
@@ -76,7 +284,7 @@ export default function Goals() {
               <CardContent className="p-6">
                 <div className="flex items-start gap-4">
                   <button
-                    onClick={() => toggleGoal(goal.id)}
+                    onClick={() => toggleGoal(goal.id, goal.completed)}
                     className={cn(
                       "w-6 h-6 rounded-sm border-2 flex-shrink-0 flex items-center justify-center transition-all mt-1",
                       goal.completed
@@ -89,14 +297,19 @@ export default function Goals() {
 
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
-                      <h3
-                        className={cn(
-                          "font-korean text-lg",
-                          goal.completed ? "text-muted-foreground line-through" : "text-foreground"
-                        )}
-                      >
-                        {goal.title}
-                      </h3>
+                      <div>
+                        <h3
+                          className={cn(
+                            "font-korean text-lg",
+                            goal.completed ? "text-muted-foreground line-through" : "text-foreground"
+                          )}
+                        >
+                          {goal.title}
+                        </h3>
+                        <div className="font-korean text-xs text-muted-foreground mt-1">
+                          보상: {goal.powder_reward} 가루
+                        </div>
+                      </div>
                       <div className="flex gap-1">
                         {Array.from({ length: goal.difficulty }).map((_, i) => (
                           <Star key={i} className="w-4 h-4 text-warning fill-warning" />
@@ -108,10 +321,12 @@ export default function Goals() {
                       <Progress value={goal.progress} className="h-2" />
                       <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-korean text-muted-foreground">
                         <span>진행률: {goal.progress}%</span>
-                        <div className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          <span>{goal.dueDate}</span>
-                        </div>
+                        {goal.due_date && (
+                          <div className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            <span>{goal.due_date}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -120,28 +335,6 @@ export default function Goals() {
             </Card>
           ))}
         </div>
-
-        <Card className="bg-gradient-secondary border-2 border-secondary shadow-neon">
-          <CardHeader>
-            <CardTitle className="font-pixel text-xl text-foreground flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-secondary" />
-              AI 추천 목표
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {["TypeScript 기초 다지기", "알고리즘 문제 풀이", "디자인 패턴 학습"].map((suggestion, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between p-4 bg-card/80 rounded-sm border border-border hover:border-secondary transition-all"
-              >
-                <span className="font-korean text-sm">{suggestion}</span>
-                <Button variant="neon" size="sm">
-                  추가하기
-                </Button>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
       </div>
     </div>
   );

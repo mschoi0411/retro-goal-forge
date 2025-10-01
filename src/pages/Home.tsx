@@ -1,19 +1,80 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Target, Heart, Zap, TrendingUp } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
+import { Session } from "@supabase/supabase-js";
 
 export default function Home() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userName] = useState("모험가");
+  const [session, setSession] = useState<Session | null>(null);
+  const [userName, setUserName] = useState("모험가");
+  const [stats, setStats] = useState([
+    { label: "달성한 목표", value: 0, icon: Target, color: "text-success" },
+    { label: "나의 펫", value: 0, icon: Heart, color: "text-accent" },
+    { label: "도전 중", value: 0, icon: Zap, color: "text-warning" },
+  ]);
+  const navigate = useNavigate();
 
-  const stats = [
-    { label: "달성한 목표", value: 12, icon: Target, color: "text-success" },
-    { label: "나의 펫", value: 3, icon: Heart, color: "text-accent" },
-    { label: "도전 중", value: 5, icon: Zap, color: "text-warning" },
-  ];
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) {
+        loadUserData(session.user.id);
+      }
+    });
 
-  if (!isLoggedIn) {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) {
+        loadUserData(session.user.id);
+      } else {
+        setStats([
+          { label: "달성한 목표", value: 0, icon: Target, color: "text-success" },
+          { label: "나의 펫", value: 0, icon: Heart, color: "text-accent" },
+          { label: "도전 중", value: 0, icon: Zap, color: "text-warning" },
+        ]);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const loadUserData = async (userId: string) => {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("display_name")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (profile) {
+      setUserName(profile.display_name || "모험가");
+    }
+
+    const { data: goals } = await supabase
+      .from("goals")
+      .select("*")
+      .eq("user_id", userId);
+
+    const { data: pets } = await supabase
+      .from("pets")
+      .select("*")
+      .eq("user_id", userId);
+
+    const completedGoals = goals?.filter((g) => g.completed).length || 0;
+    const activeGoals = goals?.filter((g) => !g.completed).length || 0;
+    const petCount = pets?.length || 0;
+
+    setStats([
+      { label: "달성한 목표", value: completedGoals, icon: Target, color: "text-success" },
+      { label: "나의 펫", value: petCount, icon: Heart, color: "text-accent" },
+      { label: "도전 중", value: activeGoals, icon: Zap, color: "text-warning" },
+    ]);
+  };
+
+  if (!session) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <div className="text-center max-w-2xl w-full animate-slide-up">
@@ -41,7 +102,7 @@ export default function Home() {
             <Button
               variant="hero"
               size="hero"
-              onClick={() => setIsLoggedIn(true)}
+              onClick={() => navigate("/auth")}
               className="w-full sm:w-auto"
             >
               회원가입 하기
@@ -49,7 +110,7 @@ export default function Home() {
             <Button
               variant="neon"
               size="lg"
-              onClick={() => setIsLoggedIn(true)}
+              onClick={() => navigate("/auth")}
               className="w-full sm:w-auto"
             >
               로그인

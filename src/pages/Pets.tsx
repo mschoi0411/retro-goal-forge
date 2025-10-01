@@ -1,16 +1,35 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Heart, Star, Sparkles, Zap } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface Pet {
-  id: number;
+  id: string;
   name: string;
   level: number;
   rarity: "common" | "rare" | "epic" | "legendary";
   experience: number;
-  isMain: boolean;
+  is_main: boolean;
   stars: number;
 }
 
@@ -29,16 +48,209 @@ const rarityBg = {
 };
 
 export default function Pets() {
-  const [pets, setPets] = useState<Pet[]>([
-    { id: 1, name: "불꽃이", level: 5, rarity: "legendary", experience: 75, isMain: true, stars: 3 },
-    { id: 2, name: "푸르미", level: 3, rarity: "epic", experience: 45, isMain: false, stars: 2 },
-    { id: 3, name: "반짝이", level: 2, rarity: "rare", experience: 60, isMain: false, stars: 1 },
-  ]);
+  const [pets, setPets] = useState<Pet[]>([]);
+  const [powder, setPowder] = useState(0);
+  const [newPetName, setNewPetName] = useState("");
+  const [newPetRarity, setNewPetRarity] = useState<Pet["rarity"]>("common");
+  const [openCreate, setOpenCreate] = useState(false);
+  const [openUpgrade, setOpenUpgrade] = useState(false);
+  const [selectedPet, setSelectedPet] = useState<Pet | null>(null);
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const { toast } = useToast();
 
-  const [powder] = useState(1250);
+  useEffect(() => {
+    checkAuth();
+    loadPets();
+    loadPowder();
+  }, []);
 
-  const setMainPet = (id: number) => {
-    setPets(pets.map((p) => ({ ...p, isMain: p.id === id })));
+  const checkAuth = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) {
+      toast({
+        title: "로그인이 필요합니다",
+        description: "로그인 후 이용해주세요.",
+        variant: "destructive",
+      });
+      navigate("/auth");
+    }
+  };
+
+  const loadPets = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const { data } = await supabase
+      .from("pets")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: false });
+
+    if (data) {
+      setPets(data as Pet[]);
+    }
+  };
+
+  const loadPowder = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const { data } = await supabase
+      .from("user_powder")
+      .select("amount")
+      .eq("user_id", session.user.id)
+      .single();
+
+    if (data) {
+      setPowder(data.amount);
+    }
+  };
+
+  const setMainPet = async (id: string) => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) return;
+
+    // Set all pets to not main
+    await supabase
+      .from("pets")
+      .update({ is_main: false })
+      .eq("user_id", session.user.id);
+
+    // Set selected pet as main
+    const { error } = await supabase
+      .from("pets")
+      .update({ is_main: true })
+      .eq("id", id);
+
+    if (error) {
+      toast({
+        title: "오류 발생",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "메인 펫 설정 완료!",
+      });
+      loadPets();
+    }
+  };
+
+  const createPet = async () => {
+    if (!newPetName.trim()) {
+      toast({
+        title: "이름을 입력해주세요",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const cost = 500;
+    if (powder < cost) {
+      toast({
+        title: "가루가 부족합니다",
+        description: `${cost} 가루가 필요합니다.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) return;
+
+    setLoading(true);
+
+    const { error: petError } = await supabase.from("pets").insert({
+      user_id: session.user.id,
+      name: newPetName,
+      rarity: newPetRarity,
+    });
+
+    if (petError) {
+      toast({
+        title: "오류 발생",
+        description: petError.message,
+        variant: "destructive",
+      });
+    } else {
+      await supabase
+        .from("user_powder")
+        .update({ amount: powder - cost })
+        .eq("user_id", session.user.id);
+
+      toast({
+        title: "펫 생성 완료!",
+        description: `${cost} 가루를 사용했습니다.`,
+      });
+      setNewPetName("");
+      setNewPetRarity("common");
+      setOpenCreate(false);
+      loadPets();
+      loadPowder();
+    }
+
+    setLoading(false);
+  };
+
+  const upgradePet = async () => {
+    if (!selectedPet) return;
+
+    const cost = (selectedPet.stars + 1) * 100;
+    if (powder < cost) {
+      toast({
+        title: "가루가 부족합니다",
+        description: `${cost} 가루가 필요합니다.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) return;
+
+    setLoading(true);
+
+    const { error } = await supabase
+      .from("pets")
+      .update({ stars: selectedPet.stars + 1 })
+      .eq("id", selectedPet.id);
+
+    if (error) {
+      toast({
+        title: "오류 발생",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      await supabase
+        .from("user_powder")
+        .update({ amount: powder - cost })
+        .eq("user_id", session.user.id);
+
+      toast({
+        title: "강화 완료!",
+        description: `${cost} 가루를 사용했습니다.`,
+      });
+      setOpenUpgrade(false);
+      setSelectedPet(null);
+      loadPets();
+      loadPowder();
+    }
+
+    setLoading(false);
   };
 
   return (
@@ -58,10 +270,67 @@ export default function Pets() {
                   <div className="font-pixel text-2xl text-primary-foreground">{powder}</div>
                 </div>
               </div>
-              <Button variant="hero" size="lg">
-                <Zap className="w-5 h-5" />
-                펫 생성하기
-              </Button>
+              <Dialog open={openCreate} onOpenChange={setOpenCreate}>
+                <DialogTrigger asChild>
+                  <Button variant="hero" size="lg">
+                    <Zap className="w-5 h-5" />
+                    펫 생성하기
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle className="font-pixel">새로운 펫 생성</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="petName" className="font-korean">
+                        펫 이름
+                      </Label>
+                      <Input
+                        id="petName"
+                        value={newPetName}
+                        onChange={(e) => setNewPetName(e.target.value)}
+                        placeholder="펫 이름을 입력하세요"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="petRarity" className="font-korean">
+                        희귀도
+                      </Label>
+                      <Select
+                        value={newPetRarity}
+                        onValueChange={(value: Pet["rarity"]) => setNewPetRarity(value)}
+                      >
+                        <SelectTrigger id="petRarity">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="common">Common</SelectItem>
+                          <SelectItem value="rare">Rare</SelectItem>
+                          <SelectItem value="epic">Epic</SelectItem>
+                          <SelectItem value="legendary">Legendary</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="p-4 bg-muted rounded-sm">
+                      <p className="font-korean text-sm text-muted-foreground">
+                        생성 비용: 500 가루
+                      </p>
+                      <p className="font-korean text-sm text-muted-foreground">
+                        보유 가루: {powder}
+                      </p>
+                    </div>
+                    <Button
+                      onClick={createPet}
+                      variant="hero"
+                      className="w-full"
+                      disabled={loading}
+                    >
+                      {loading ? "생성 중..." : "펫 생성"}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </CardContent>
           </Card>
 
@@ -79,11 +348,11 @@ export default function Pets() {
               className={cn(
                 "relative overflow-hidden border-2 transition-all shadow-card hover:shadow-neon animate-slide-up",
                 rarityColors[pet.rarity],
-                pet.isMain && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                pet.is_main && "ring-2 ring-primary ring-offset-2 ring-offset-background"
               )}
               style={{ animationDelay: `${index * 100}ms` }}
             >
-              {pet.isMain && (
+              {pet.is_main && (
                 <div className="absolute top-2 left-2 z-10 px-2 py-1 bg-primary rounded-sm">
                   <span className="font-pixel text-xs text-primary-foreground">MAIN</span>
                 </div>
@@ -123,7 +392,7 @@ export default function Pets() {
                 </div>
 
                 <div className="flex gap-2">
-                  {!pet.isMain && (
+                  {!pet.is_main && (
                     <Button
                       variant="neon"
                       size="sm"
@@ -133,7 +402,15 @@ export default function Pets() {
                       메인 설정
                     </Button>
                   )}
-                  <Button variant="outline" size="sm" className="flex-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => {
+                      setSelectedPet(pet);
+                      setOpenUpgrade(true);
+                    }}
+                  >
                     <Star className="w-4 h-4" />
                     강화
                   </Button>
@@ -165,12 +442,51 @@ export default function Pets() {
                 </div>
                 <div className="text-center">
                   <div className="font-pixel text-2xl text-warning">★★★</div>
-                  <div className="font-korean text-xs text-muted-foreground">400 가루</div>
+                  <div className="font-korean text-xs text-muted-foreground">300 가루</div>
                 </div>
               </div>
             </div>
           </CardContent>
         </Card>
+
+        <Dialog open={openUpgrade} onOpenChange={setOpenUpgrade}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="font-pixel">펫 강화</DialogTitle>
+            </DialogHeader>
+            {selectedPet && (
+              <div className="space-y-4">
+                <div className="text-center">
+                  <h3 className="font-korean text-lg font-bold mb-2">{selectedPet.name}</h3>
+                  <div className="flex justify-center gap-1 mb-4">
+                    {Array.from({ length: selectedPet.stars }).map((_, i) => (
+                      <Star key={i} className="w-5 h-5 text-warning fill-warning" />
+                    ))}
+                  </div>
+                </div>
+                <div className="p-4 bg-muted rounded-sm space-y-2">
+                  <p className="font-korean text-sm text-muted-foreground">
+                    현재 강화 단계: {selectedPet.stars}★
+                  </p>
+                  <p className="font-korean text-sm text-muted-foreground">
+                    강화 비용: {(selectedPet.stars + 1) * 100} 가루
+                  </p>
+                  <p className="font-korean text-sm text-muted-foreground">
+                    보유 가루: {powder}
+                  </p>
+                </div>
+                <Button
+                  onClick={upgradePet}
+                  variant="hero"
+                  className="w-full"
+                  disabled={loading}
+                >
+                  {loading ? "강화 중..." : "강화하기"}
+                </Button>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
