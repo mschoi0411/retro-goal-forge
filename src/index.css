@@ -141,4 +141,64 @@ All colors MUST be HSL.
     transform: translate(4px, 4px);
     box-shadow: none;
   }
+
+  /* Walking Cat Animations */
+  @keyframes bounce-walk {
+    0%, 100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+
+  @keyframes leg-left {
+    0%, 100% {
+      transform: translateX(0px) rotate(0deg);
+    }
+    50% {
+      transform: translateX(-2px) rotate(-15deg);
+    }
+  }
+
+  @keyframes leg-right {
+    0%, 100% {
+      transform: translateX(0px) rotate(0deg);
+    }
+    50% {
+      transform: translateX(2px) rotate(15deg);
+    }
+  }
+
+  @keyframes fade-in {
+    0% {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-bounce-walk {
+    animation: bounce-walk 0.5s ease-in-out infinite;
+  }
+
+  .animate-leg-left {
+    animation: leg-left 0.3s ease-in-out infinite;
+  }
+
+  .animate-leg-right {
+    animation: leg-right 0.3s ease-in-out infinite;
+    animation-delay: 0.15s;
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.5s ease-out;
+  }
+
+  .walking-cat {
+    transition: left 0.05s linear;
+  }
 }
