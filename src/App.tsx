@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Navigation from "./components/Navigation";
+import { WalkingCat } from "./components/WalkingCat";
 import Home from "./pages/Home";
 import Auth from "./pages/Auth";
 import Goals from "./pages/Goals";
@@ -21,6 +22,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <div className="min-h-screen bg-background">
+          <WalkingCat />
           <Navigation />
           <div className="pt-16">
             <Routes>

@@ -5,7 +5,6 @@ import { Target, Heart, Zap, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { Session } from "@supabase/supabase-js";
-import { WalkingCat } from "@/components/WalkingCat";
 
 export default function Home() {
   const [session, setSession] = useState<Session | null>(null);
@@ -138,7 +137,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen px-4 py-8">
-      <WalkingCat />
       <div className="container mx-auto max-w-6xl">
         <div className="text-center mb-12 animate-slide-up">
           <h1 className="font-pixel text-2xl sm:text-3xl mb-4 text-foreground">

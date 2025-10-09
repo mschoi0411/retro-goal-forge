@@ -27,9 +27,28 @@ const rarityGradients = {
 
 export const WalkingCat = () => {
   const [movingPets, setMovingPets] = useState<MovingPet[]>([]);
+  const [isEnabled, setIsEnabled] = useState(() => {
+    const saved = localStorage.getItem("walkingPetsEnabled");
+    return saved === null ? true : saved === "true";
+  });
 
   useEffect(() => {
     loadPets();
+  }, []);
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const saved = localStorage.getItem("walkingPetsEnabled");
+      setIsEnabled(saved === null ? true : saved === "true");
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("walkingPetsToggle", handleStorageChange);
+    
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("walkingPetsToggle", handleStorageChange);
+    };
   }, []);
 
   const loadPets = async () => {
@@ -73,7 +92,7 @@ export const WalkingCat = () => {
   };
 
   useEffect(() => {
-    if (movingPets.length === 0) return;
+    if (movingPets.length === 0 || !isEnabled) return;
 
     const interval = setInterval(() => {
       setMovingPets((prevPets) =>
@@ -118,7 +137,9 @@ export const WalkingCat = () => {
     }, 50);
 
     return () => clearInterval(interval);
-  }, [movingPets.length]);
+  }, [movingPets.length, isEnabled]);
+
+  if (!isEnabled) return null;
 
   return (
     <>
