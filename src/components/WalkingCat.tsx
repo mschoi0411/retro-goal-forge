@@ -15,6 +15,7 @@ interface MovingPet extends Pet {
   speedX: number;
   speedY: number;
   direction: "horizontal" | "vertical" | "diagonal";
+  nextDirectionChange: number;
 }
 
 const rarityGradients = {
@@ -52,6 +53,9 @@ export const WalkingCat = () => {
         // 랜덤한 속도와 방향
         const speedX = (Math.random() - 0.5) * 4;
         const speedY = (Math.random() - 0.5) * 4;
+        
+        // 다음 방향 변경 시간 (3~10초 후)
+        const nextDirectionChange = Date.now() + (3000 + Math.random() * 7000);
 
         return {
           ...pet,
@@ -60,6 +64,7 @@ export const WalkingCat = () => {
           speedX,
           speedY,
           direction: "diagonal" as const,
+          nextDirectionChange,
         } as MovingPet;
       });
 
@@ -73,10 +78,20 @@ export const WalkingCat = () => {
     const interval = setInterval(() => {
       setMovingPets((prevPets) =>
         prevPets.map((pet) => {
-          let newX = pet.x + pet.speedX;
-          let newY = pet.y + pet.speedY;
+          const currentTime = Date.now();
           let newSpeedX = pet.speedX;
           let newSpeedY = pet.speedY;
+          let newNextDirectionChange = pet.nextDirectionChange;
+          
+          // 방향 변경 시간이 되면 새로운 랜덤 방향 설정
+          if (currentTime >= pet.nextDirectionChange) {
+            newSpeedX = (Math.random() - 0.5) * 4;
+            newSpeedY = (Math.random() - 0.5) * 4;
+            newNextDirectionChange = currentTime + (3000 + Math.random() * 7000);
+          }
+          
+          let newX = pet.x + newSpeedX;
+          let newY = pet.y + newSpeedY;
 
           // 화면 가장자리에 부딪히면 튕겨나감
           const petSize = 32; // w-8 = 32px
@@ -96,6 +111,7 @@ export const WalkingCat = () => {
             y: newY,
             speedX: newSpeedX,
             speedY: newSpeedY,
+            nextDirectionChange: newNextDirectionChange,
           };
         })
       );
