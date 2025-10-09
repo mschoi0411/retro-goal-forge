@@ -44,32 +44,14 @@ export const WalkingCat = () => {
       .limit(5); // 최대 5마리만 표시
 
     if (data && data.length > 0) {
-      const pets = data.map((pet, index) => {
-        const directions = ["horizontal", "vertical", "diagonal"] as const;
-        const direction = directions[index % directions.length];
+      const pets = data.map((pet) => {
+        // 랜덤한 시작 위치 (화면 안쪽에서 시작)
+        const x = Math.random() * (window.innerWidth - 100) + 50;
+        const y = Math.random() * (window.innerHeight - 100) + 50;
         
-        let x, y, speedX, speedY;
-        
-        switch (direction) {
-          case "horizontal":
-            x = Math.random() > 0.5 ? -100 : window.innerWidth + 100;
-            y = Math.random() * (window.innerHeight - 200) + 100;
-            speedX = x < 0 ? 2 + Math.random() : -(2 + Math.random());
-            speedY = 0;
-            break;
-          case "vertical":
-            x = Math.random() * (window.innerWidth - 200) + 100;
-            y = Math.random() > 0.5 ? -100 : window.innerHeight + 100;
-            speedX = 0;
-            speedY = y < 0 ? 2 + Math.random() : -(2 + Math.random());
-            break;
-          case "diagonal":
-            x = Math.random() > 0.5 ? -100 : window.innerWidth + 100;
-            y = Math.random() > 0.5 ? -100 : window.innerHeight + 100;
-            speedX = x < 0 ? 1.5 + Math.random() : -(1.5 + Math.random());
-            speedY = y < 0 ? 1.5 + Math.random() : -(1.5 + Math.random());
-            break;
-        }
+        // 랜덤한 속도와 방향
+        const speedX = (Math.random() - 0.5) * 4;
+        const speedY = (Math.random() - 0.5) * 4;
 
         return {
           ...pet,
@@ -77,7 +59,7 @@ export const WalkingCat = () => {
           y,
           speedX,
           speedY,
-          direction,
+          direction: "diagonal" as const,
         } as MovingPet;
       });
 
@@ -96,17 +78,16 @@ export const WalkingCat = () => {
           let newSpeedX = pet.speedX;
           let newSpeedY = pet.speedY;
 
-          // 화면 밖으로 나가면 반대편에서 다시 나타남
-          if (newX > window.innerWidth + 100) {
-            newX = -100;
-          } else if (newX < -100) {
-            newX = window.innerWidth + 100;
+          // 화면 가장자리에 부딪히면 튕겨나감
+          const petSize = 32; // w-8 = 32px
+          if (newX <= 0 || newX >= window.innerWidth - petSize) {
+            newSpeedX = -newSpeedX;
+            newX = newX <= 0 ? 0 : window.innerWidth - petSize;
           }
 
-          if (newY > window.innerHeight + 100) {
-            newY = -100;
-          } else if (newY < -100) {
-            newY = window.innerHeight + 100;
+          if (newY <= 0 || newY >= window.innerHeight - petSize) {
+            newSpeedY = -newSpeedY;
+            newY = newY <= 0 ? 0 : window.innerHeight - petSize;
           }
 
           return {
@@ -133,20 +114,20 @@ export const WalkingCat = () => {
         >
           <div className="relative">
             <div
-              className={`w-16 h-16 bg-gradient-to-br ${
+              className={`w-8 h-8 bg-gradient-to-br ${
                 rarityGradients[pet.rarity]
               } rounded-lg flex items-center justify-center shadow-neon animate-bounce-walk`}
             >
-              <Heart className="w-8 h-8 text-primary-foreground animate-pulse-glow" />
+              <Heart className="w-4 h-4 text-primary-foreground animate-pulse-glow" />
             </div>
-            <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-              <div className="bg-card border-2 border-primary px-3 py-1 rounded-sm shadow-neon text-xs font-korean animate-fade-in">
+            <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
+              <div className="bg-card border border-primary px-2 py-0.5 rounded-sm shadow-neon text-[10px] font-korean animate-fade-in">
                 {pet.name}
               </div>
             </div>
             {/* Pet legs animation */}
-            <div className="absolute -bottom-2 left-2 w-2 h-3 bg-primary rounded-sm animate-leg-left"></div>
-            <div className="absolute -bottom-2 right-2 w-2 h-3 bg-primary rounded-sm animate-leg-right"></div>
+            <div className="absolute -bottom-1 left-1 w-1 h-2 bg-primary rounded-sm animate-leg-left"></div>
+            <div className="absolute -bottom-1 right-1 w-1 h-2 bg-primary rounded-sm animate-leg-right"></div>
           </div>
         </div>
       ))}
