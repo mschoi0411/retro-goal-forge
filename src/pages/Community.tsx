@@ -56,15 +56,37 @@ export default function Community() {
   const loadPosts = async () => {
     const { data, error } = await supabase
       .from("posts")
-      .select(`
-        *,
-        profiles (display_name)
-      `)
+      .select("*")
       .order("created_at", { ascending: false });
     
-    if (!error && data) {
-      setPosts(data);
+    if (error) {
+      console.error("Error loading posts:", error);
+      return;
     }
+
+    if (!data) {
+      setPosts([]);
+      return;
+    }
+
+    // Fetch profiles separately
+    const userIds = [...new Set(data.map((p) => p.user_id))];
+    const { data: profilesData } = await supabase
+      .from("profiles")
+      .select("user_id, display_name")
+      .in("user_id", userIds);
+
+    const profilesMap = new Map(
+      profilesData?.map((p) => [p.user_id, p]) || []
+    );
+
+    const enrichedPosts = data.map((post) => ({
+      ...post,
+      profiles: profilesMap.get(post.user_id),
+    }));
+
+    console.log("Loaded posts:", enrichedPosts);
+    setPosts(enrichedPosts);
   };
 
   const loadRankings = async () => {

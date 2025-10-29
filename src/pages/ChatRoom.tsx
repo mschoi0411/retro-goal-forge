@@ -254,32 +254,37 @@ export default function ChatRoom() {
 
     if (!participantsData) {
       setParticipants([]);
+      setMovingPets([]);
       return;
     }
 
-    // Fetch profiles and pets separately
+    // Fetch profiles separately
     const userIds = participantsData.map((p) => p.user_id);
-    const petIds = participantsData.filter((p) => p.pet_id).map((p) => p.pet_id!);
-
+    
     const { data: profilesData } = await supabase
       .from("profiles")
       .select("user_id, display_name")
       .in("user_id", userIds);
 
+    // Fetch main pets for all users
     const { data: petsData } = await supabase
       .from("pets")
-      .select("id, name, level, rarity")
-      .in("id", petIds);
+      .select("id, name, level, rarity, user_id")
+      .in("user_id", userIds)
+      .eq("is_main", true);
+
+    console.log("Participants:", participantsData);
+    console.log("Pets data:", petsData);
 
     const profilesMap = new Map(
       profilesData?.map((p) => [p.user_id, p]) || []
     );
-    const petsMap = new Map(petsData?.map((p) => [p.id, p]) || []);
+    const petsMap = new Map(petsData?.map((p) => [p.user_id, p]) || []);
 
     const enrichedParticipants = participantsData.map((participant) => ({
       ...participant,
       profiles: profilesMap.get(participant.user_id),
-      pets: participant.pet_id ? petsMap.get(participant.pet_id) : undefined,
+      pets: petsMap.get(participant.user_id),
     }));
 
     setParticipants(enrichedParticipants as Participant[]);
@@ -308,6 +313,7 @@ export default function ChatRoom() {
           };
         });
 
+      console.log("Moving pets initialized:", pets);
       setMovingPets(pets);
     }
   };
