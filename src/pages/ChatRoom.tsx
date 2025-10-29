@@ -64,7 +64,18 @@ export default function ChatRoom() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Disable global walking pets when entering chat room
+    const previousState = localStorage.getItem("walkingPetsEnabled");
+    localStorage.setItem("walkingPetsEnabled", "false");
+    window.dispatchEvent(new Event("walkingPetsToggle"));
+
     initializeRoom();
+
+    // Re-enable global walking pets when leaving chat room
+    return () => {
+      localStorage.setItem("walkingPetsEnabled", previousState || "true");
+      window.dispatchEvent(new Event("walkingPetsToggle"));
+    };
   }, [roomId]);
 
   useEffect(() => {
