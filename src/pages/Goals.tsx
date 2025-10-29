@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 
 interface Goal {
   id: string;
@@ -26,6 +32,13 @@ interface Goal {
   due_date: string;
 }
 
+interface CalendarEvent {
+  id: string;
+  title: string;
+  start_date: string;
+  end_date: string | null;
+}
+
 export default function Goals() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [newGoalTitle, setNewGoalTitle] = useState("");
@@ -34,13 +47,22 @@ export default function Goals() {
   const [newGoalReward, setNewGoalReward] = useState(100);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [filteredEvents, setFilteredEvents] = useState<CalendarEvent[]>([]);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     checkAuth();
     loadGoals();
+    loadCalendarEvents();
   }, []);
+
+  useEffect(() => {
+    calculateReward();
+  }, [newGoalDifficulty, newGoalDueDate]);
 
   const checkAuth = async () => {
     const {
@@ -71,6 +93,72 @@ export default function Goals() {
     if (data) {
       setGoals(data);
     }
+  };
+
+  const loadCalendarEvents = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const { data } = await supabase
+      .from("calendar_events")
+      .select("id, title, start_date, end_date")
+      .eq("user_id", session.user.id)
+      .order("start_date", { ascending: true });
+
+    if (data) {
+      setCalendarEvents(data);
+    }
+  };
+
+  const handleTitleChange = (value: string) => {
+    setNewGoalTitle(value);
+    
+    if (value.trim().length > 0) {
+      const filtered = calendarEvents.filter((event) =>
+        event.title.toLowerCase().includes(value.toLowerCase())
+      );
+      setFilteredEvents(filtered);
+      setShowSuggestions(filtered.length > 0);
+    } else {
+      setShowSuggestions(false);
+      setFilteredEvents([]);
+    }
+  };
+
+  const selectEvent = (event: CalendarEvent) => {
+    setNewGoalTitle(event.title);
+    if (event.end_date) {
+      setNewGoalDueDate(event.end_date.split('T')[0]);
+    } else {
+      setNewGoalDueDate(event.start_date.split('T')[0]);
+    }
+    setShowSuggestions(false);
+    setFilteredEvents([]);
+  };
+
+  const calculateReward = () => {
+    let reward = 100; // 기본 보상
+    
+    // 난이도에 따른 보상 (난이도 1당 +50)
+    reward += (newGoalDifficulty - 1) * 50;
+    
+    // 기간에 따른 보상 계산
+    if (newGoalDueDate) {
+      const today = new Date();
+      const dueDate = new Date(newGoalDueDate);
+      const diffTime = dueDate.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays > 0) {
+        // 1주일(7일)당 +25 보상
+        const weeks = Math.floor(diffDays / 7);
+        reward += weeks * 25;
+      }
+    }
+    
+    setNewGoalReward(reward);
   };
 
   const toggleGoal = async (id: string, completed: boolean) => {
@@ -218,12 +306,56 @@ export default function Goals() {
                   <Label htmlFor="title" className="font-korean">
                     목표 제목
                   </Label>
-                  <Input
-                    id="title"
-                    value={newGoalTitle}
-                    onChange={(e) => setNewGoalTitle(e.target.value)}
-                    placeholder="목표를 입력하세요"
-                  />
+                  <Popover open={showSuggestions} onOpenChange={setShowSuggestions}>
+                    <PopoverTrigger asChild>
+                      <div className="relative">
+                        <Input
+                          ref={inputRef}
+                          id="title"
+                          value={newGoalTitle}
+                          onChange={(e) => handleTitleChange(e.target.value)}
+                          placeholder="목표를 입력하세요 (캘린더 일정 연동)"
+                          onFocus={() => {
+                            if (newGoalTitle.trim() && filteredEvents.length > 0) {
+                              setShowSuggestions(true);
+                            }
+                          }}
+                        />
+                      </div>
+                    </PopoverTrigger>
+                    <PopoverContent 
+                      className="w-full p-0" 
+                      align="start"
+                      onOpenAutoFocus={(e) => e.preventDefault()}
+                    >
+                      <Command>
+                        <CommandList>
+                          <CommandEmpty className="font-korean text-sm p-2">
+                            일치하는 일정이 없습니다.
+                          </CommandEmpty>
+                          <CommandGroup>
+                            {filteredEvents.map((event) => (
+                              <CommandItem
+                                key={event.id}
+                                onSelect={() => selectEvent(event)}
+                                className="font-korean cursor-pointer"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <Calendar className="w-4 h-4" />
+                                  <div>
+                                    <div>{event.title}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {new Date(event.start_date).toLocaleDateString('ko-KR')}
+                                    </div>
+                                  </div>
+                                </div>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 <div>
                   <Label htmlFor="difficulty" className="font-korean">
@@ -237,18 +369,9 @@ export default function Goals() {
                     value={newGoalDifficulty}
                     onChange={(e) => setNewGoalDifficulty(Number(e.target.value))}
                   />
-                </div>
-                <div>
-                  <Label htmlFor="reward" className="font-korean">
-                    보상 가루
-                  </Label>
-                  <Input
-                    id="reward"
-                    type="number"
-                    min="1"
-                    value={newGoalReward}
-                    onChange={(e) => setNewGoalReward(Number(e.target.value))}
-                  />
+                  <div className="text-xs text-muted-foreground mt-1 font-korean">
+                    난이도 1당 +50 가루
+                  </div>
                 </div>
                 <div>
                   <Label htmlFor="dueDate" className="font-korean">
@@ -259,6 +382,22 @@ export default function Goals() {
                     type="date"
                     value={newGoalDueDate}
                     onChange={(e) => setNewGoalDueDate(e.target.value)}
+                  />
+                  <div className="text-xs text-muted-foreground mt-1 font-korean">
+                    1주일당 +25 가루
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="reward" className="font-korean">
+                    보상 가루 (자동 계산)
+                  </Label>
+                  <Input
+                    id="reward"
+                    type="number"
+                    min="1"
+                    value={newGoalReward}
+                    readOnly
+                    className="bg-muted"
                   />
                 </div>
                 <Button

@@ -171,7 +171,12 @@ export default function Home() {
         </div>
 
         <div className="text-center">
-          <Button variant="hero" size="hero" className="group">
+          <Button 
+            variant="hero" 
+            size="hero" 
+            className="group"
+            onClick={() => navigate("/goals")}
+          >
             <TrendingUp className="w-5 h-5 group-hover:animate-pulse" />
             새로운 목표 달성하기
           </Button>
