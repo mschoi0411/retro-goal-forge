@@ -436,9 +436,11 @@ export default function Goals() {
     }
 
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
     const dueDate = new Date(newGoalDueDate);
+    dueDate.setHours(0, 0, 0, 0);
     const diffTime = dueDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // 오늘 포함
 
     if (diffDays <= 0) return 0;
 
@@ -446,7 +448,7 @@ export default function Goals() {
       return diffDays;
     } else if (scheduleType === 'specific_days') {
       let count = 0;
-      for (let i = 0; i <= diffDays; i++) {
+      for (let i = 0; i < diffDays; i++) {
         const checkDate = new Date(today);
         checkDate.setDate(today.getDate() + i);
         if (selectedDays.includes(checkDate.getDay())) {
