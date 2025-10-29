@@ -144,19 +144,31 @@ export default function ChatRoom() {
       .select("id")
       .eq("user_id", session.user.id)
       .eq("is_main", true)
-      .single();
+      .maybeSingle();
 
-    // Join the room as participant
-    const { error: joinError } = await supabase
+    // Check if already a participant
+    const { data: existingParticipant } = await supabase
       .from("chat_participants")
-      .upsert({
-        room_id: roomId,
-        user_id: session.user.id,
-        pet_id: mainPet?.id,
-      });
+      .select("id")
+      .eq("room_id", roomId)
+      .eq("user_id", session.user.id)
+      .maybeSingle();
 
-    if (joinError) {
-      console.error("Error joining room:", joinError);
+    if (existingParticipant) {
+      // Update existing participant with current main pet
+      await supabase
+        .from("chat_participants")
+        .update({ pet_id: mainPet?.id })
+        .eq("id", existingParticipant.id);
+    } else {
+      // Join the room as new participant
+      await supabase
+        .from("chat_participants")
+        .insert({
+          room_id: roomId,
+          user_id: session.user.id,
+          pet_id: mainPet?.id,
+        });
     }
 
     // Load messages
