@@ -32,6 +32,14 @@ export default function Community() {
   const [posts, setPosts] = useState<any[]>([]);
   const [isPostLoading, setIsPostLoading] = useState(false);
   
+  // Comments state
+  const [showComments, setShowComments] = useState<string | null>(null);
+  const [comments, setComments] = useState<Record<string, any[]>>({});
+  const [newComment, setNewComment] = useState("");
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
+  const [userLikes, setUserLikes] = useState<Set<string>>(new Set());
+  
   // Ranking state
   const [rankings, setRankings] = useState<any[]>([]);
   const [challenges, setChallenges] = useState<any[]>([]);
@@ -40,6 +48,7 @@ export default function Community() {
     loadPosts();
     loadRankings();
     loadChallenges();
+    loadUserLikes();
   }, []);
 
   const loadChallenges = async () => {
@@ -50,6 +59,22 @@ export default function Community() {
     
     if (!error && data) {
       setChallenges(data);
+    }
+  };
+
+  const loadUserLikes = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const { data } = await supabase
+      .from("post_likes")
+      .select("post_id")
+      .eq("user_id", session.user.id);
+
+    if (data) {
+      setUserLikes(new Set(data.map((like) => like.post_id)));
     }
   };
 
@@ -87,6 +112,175 @@ export default function Community() {
 
     console.log("Loaded posts:", enrichedPosts);
     setPosts(enrichedPosts);
+
+    // Load likes and comment counts for each post
+    const postIds = data.map((p) => p.id);
+    loadLikeCounts(postIds);
+    loadCommentCounts(postIds);
+  };
+
+  const loadLikeCounts = async (postIds: string[]) => {
+    const { data } = await supabase
+      .from("post_likes")
+      .select("post_id")
+      .in("post_id", postIds);
+
+    if (data) {
+      const counts: Record<string, number> = {};
+      data.forEach((like) => {
+        counts[like.post_id] = (counts[like.post_id] || 0) + 1;
+      });
+      setLikeCounts(counts);
+    }
+  };
+
+  const loadCommentCounts = async (postIds: string[]) => {
+    const { data } = await supabase
+      .from("post_comments")
+      .select("post_id")
+      .in("post_id", postIds);
+
+    if (data) {
+      const counts: Record<string, number> = {};
+      data.forEach((comment) => {
+        counts[comment.post_id] = (counts[comment.post_id] || 0) + 1;
+      });
+      setCommentCounts(counts);
+    }
+  };
+
+  const loadComments = async (postId: string) => {
+    const { data, error } = await supabase
+      .from("post_comments")
+      .select("*")
+      .eq("post_id", postId)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Error loading comments:", error);
+      return;
+    }
+
+    if (!data) return;
+
+    // Fetch profiles for comment authors
+    const userIds = [...new Set(data.map((c) => c.user_id))];
+    const { data: profilesData } = await supabase
+      .from("profiles")
+      .select("user_id, display_name")
+      .in("user_id", userIds);
+
+    const profilesMap = new Map(
+      profilesData?.map((p) => [p.user_id, p]) || []
+    );
+
+    const enrichedComments = data.map((comment) => ({
+      ...comment,
+      profiles: profilesMap.get(comment.user_id),
+    }));
+
+    setComments((prev) => ({ ...prev, [postId]: enrichedComments }));
+  };
+
+  const toggleLike = async (postId: string) => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      toast({
+        title: "로그인이 필요합니다",
+        variant: "destructive",
+      });
+      navigate("/auth");
+      return;
+    }
+
+    const isLiked = userLikes.has(postId);
+
+    if (isLiked) {
+      // Unlike
+      await supabase
+        .from("post_likes")
+        .delete()
+        .eq("user_id", session.user.id)
+        .eq("post_id", postId);
+
+      setUserLikes((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(postId);
+        return newSet;
+      });
+      setLikeCounts((prev) => ({
+        ...prev,
+        [postId]: Math.max(0, (prev[postId] || 0) - 1),
+      }));
+    } else {
+      // Like
+      await supabase
+        .from("post_likes")
+        .insert({
+          user_id: session.user.id,
+          post_id: postId,
+        });
+
+      setUserLikes((prev) => new Set(prev).add(postId));
+      setLikeCounts((prev) => ({
+        ...prev,
+        [postId]: (prev[postId] || 0) + 1,
+      }));
+    }
+  };
+
+  const addComment = async (postId: string) => {
+    if (!newComment.trim()) return;
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      toast({
+        title: "로그인이 필요합니다",
+        variant: "destructive",
+      });
+      navigate("/auth");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("post_comments")
+      .insert({
+        user_id: session.user.id,
+        post_id: postId,
+        content: newComment.trim(),
+      });
+
+    if (error) {
+      toast({
+        title: "댓글 작성 실패",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setNewComment("");
+    loadComments(postId);
+    setCommentCounts((prev) => ({
+      ...prev,
+      [postId]: (prev[postId] || 0) + 1,
+    }));
+  };
+
+  const toggleComments = (postId: string) => {
+    if (showComments === postId) {
+      setShowComments(null);
+    } else {
+      setShowComments(postId);
+      if (!comments[postId]) {
+        loadComments(postId);
+      }
+    }
   };
 
   const loadRankings = async () => {
@@ -486,16 +680,74 @@ export default function Community() {
                       className="w-full rounded-sm border-2 border-border mb-4"
                     />
                   )}
-                  <div className="flex items-center gap-4">
-                    <Button variant="ghost" size="sm" className="gap-2">
-                      <Heart className="w-4 h-4" />
-                      <span className="font-korean text-sm">좋아요</span>
+                  <div className="flex items-center gap-4 mb-4">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="gap-2"
+                      onClick={() => toggleLike(post.id)}
+                    >
+                      <Heart 
+                        className={`w-4 h-4 ${userLikes.has(post.id) ? "fill-primary text-primary" : ""}`} 
+                      />
+                      <span className="font-korean text-sm">
+                        {likeCounts[post.id] || 0}
+                      </span>
                     </Button>
-                    <Button variant="ghost" size="sm" className="gap-2">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="gap-2"
+                      onClick={() => toggleComments(post.id)}
+                    >
                       <MessageCircle className="w-4 h-4" />
-                      <span className="font-korean text-sm">댓글</span>
+                      <span className="font-korean text-sm">
+                        {commentCounts[post.id] || 0}
+                      </span>
                     </Button>
                   </div>
+                  
+                  {showComments === post.id && (
+                    <div className="border-t-2 border-border pt-4 mt-4 space-y-3">
+                      <div className="space-y-2">
+                        {comments[post.id]?.map((comment) => (
+                          <div key={comment.id} className="flex gap-2">
+                            <Avatar className="w-6 h-6 border border-primary flex-shrink-0">
+                              <AvatarFallback className="bg-gradient-secondary text-secondary-foreground font-pixel text-xs">
+                                {comment.profiles?.display_name?.[0] || "모"}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 bg-muted/30 rounded-sm p-2">
+                              <div className="font-korean font-bold text-xs mb-1">
+                                {comment.profiles?.display_name || "모험가"}
+                              </div>
+                              <p className="font-korean text-sm">{comment.content}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <Input
+                          value={newComment}
+                          onChange={(e) => setNewComment(e.target.value)}
+                          placeholder="댓글을 입력하세요..."
+                          className="font-korean"
+                          onKeyPress={(e) => {
+                            if (e.key === "Enter") {
+                              addComment(post.id);
+                            }
+                          }}
+                        />
+                        <Button 
+                          size="sm" 
+                          onClick={() => addComment(post.id)}
+                          disabled={!newComment.trim()}
+                        >
+                          <Send className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))}
