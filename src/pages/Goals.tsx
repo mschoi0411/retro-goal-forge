@@ -23,7 +23,7 @@ import {
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 
 interface Goal {
   id: string;
@@ -748,87 +748,99 @@ export default function Goals() {
           </Dialog>
         </div>
 
-        <Tabs defaultValue="overall" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-6">
-            <TabsTrigger value="overall" className="font-korean">전체 일정</TabsTrigger>
-            <TabsTrigger value="daily" className="font-korean">하루 일정</TabsTrigger>
-          </TabsList>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
+          {/* 전체 일정 */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-pixel text-xl text-foreground">전체 일정</h2>
+              <div className="flex gap-4">
+                <div className="text-center">
+                  <div className="font-pixel text-lg text-success">{completedCount}</div>
+                  <div className="font-korean text-xs text-muted-foreground">완료</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-pixel text-lg text-warning">{remainingCount}</div>
+                  <div className="font-korean text-xs text-muted-foreground">남음</div>
+                </div>
+              </div>
+            </div>
 
-          <TabsContent value="overall" className="space-y-4 mb-12">
-            {goals.map((goal, index) => (
-              <Card
-                key={goal.id}
-                className="bg-card border-2 border-border hover:border-primary transition-all shadow-card animate-slide-up"
-                style={{ animationDelay: `${index * 50}ms` }}
-              >
-                <CardContent className="p-6">
-                  <div className="flex items-start gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
-                        <div>
-                          <h3
-                            className={cn(
-                              "font-korean text-lg",
-                              goal.completed ? "text-muted-foreground line-through" : "text-foreground"
-                            )}
-                          >
-                            {goal.title}
-                            {goal.due_date && ` (${getDaysRemaining(goal.due_date)}일 남음${getScheduleLabel(goal) ? `, ${getScheduleLabel(goal)}` : ''})`}
-                          </h3>
-                          <div className="font-korean text-xs text-muted-foreground mt-1">
-                            보상: {goal.powder_reward} 가루
-                            {goal.schedule_type !== 'none' && ` | 일일 보상: ${goal.daily_powder_reward} 가루`}
+            {goals.length === 0 ? (
+              <Card className="bg-card border-2 border-border">
+                <CardContent className="p-8 text-center">
+                  <p className="font-korean text-muted-foreground">목표가 없습니다.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              goals.map((goal, index) => (
+                <Card
+                  key={goal.id}
+                  className="bg-card border-2 border-border hover:border-primary transition-all shadow-card animate-slide-up"
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
+                  <CardContent className="p-6">
+                    <div className="flex items-start gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+                          <div>
+                            <h3
+                              className={cn(
+                                "font-korean text-lg",
+                                goal.completed ? "text-muted-foreground line-through" : "text-foreground"
+                              )}
+                            >
+                              {goal.title}
+                              {goal.due_date && ` (${getDaysRemaining(goal.due_date)}일 남음${getScheduleLabel(goal) ? `, ${getScheduleLabel(goal)}` : ''})`}
+                            </h3>
+                            <div className="font-korean text-xs text-muted-foreground mt-1">
+                              보상: {goal.powder_reward} 가루
+                              {goal.schedule_type !== 'none' && ` | 일일 보상: ${goal.daily_powder_reward} 가루`}
+                            </div>
+                          </div>
+                          <div className="flex gap-1">
+                            {Array.from({ length: goal.difficulty }).map((_, i) => (
+                              <Star key={i} className="w-4 h-4 text-warning fill-warning" />
+                            ))}
                           </div>
                         </div>
-                        <div className="flex gap-1">
-                          {Array.from({ length: goal.difficulty }).map((_, i) => (
-                            <Star key={i} className="w-4 h-4 text-warning fill-warning" />
-                          ))}
-                        </div>
-                      </div>
 
-                      <div className="space-y-2">
-                        <Progress value={goal.progress} className="h-2" />
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-korean text-muted-foreground">
-                          <span>
-                            진행률: {goal.progress}%
-                            {goal.total_days > 0 && ` (${goal.completed_days}/${goal.total_days}일)`}
-                          </span>
-                          {goal.due_date && (
-                            <div className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              <span>{goal.due_date}</span>
-                            </div>
-                          )}
+                        <div className="space-y-2">
+                          <Progress value={goal.progress} className="h-2" />
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-korean text-muted-foreground">
+                            <span>
+                              진행률: {goal.progress}%
+                              {goal.total_days > 0 && ` (${goal.completed_days}/${goal.total_days}일)`}
+                            </span>
+                            {goal.due_date && (
+                              <div className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                <span>{goal.due_date}</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </TabsContent>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
 
-          <TabsContent value="daily" className="space-y-4 mb-12">
-            <div className="flex gap-4 mb-6">
-              <Card className="flex-1 bg-card/50 border-2 border-success">
-                <CardContent className="p-4 flex items-center gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-success" />
-                  <div>
-                    <div className="font-pixel text-xl text-success">{todayTasksCompleted}</div>
-                    <div className="font-korean text-xs text-muted-foreground">완료</div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="flex-1 bg-card/50 border-2 border-warning">
-                <CardContent className="p-4 flex items-center gap-3">
-                  <TrendingUp className="w-5 h-5 text-warning" />
-                  <div>
-                    <div className="font-pixel text-xl text-warning">{todayTasksRemaining}</div>
-                    <div className="font-korean text-xs text-muted-foreground">남은 작업</div>
-                  </div>
-                </CardContent>
-              </Card>
+          {/* 하루 일정 */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-pixel text-xl text-foreground">하루 일정</h2>
+              <div className="flex gap-4">
+                <div className="text-center">
+                  <div className="font-pixel text-lg text-success">{todayTasksCompleted}</div>
+                  <div className="font-korean text-xs text-muted-foreground">완료</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-pixel text-lg text-warning">{todayTasksRemaining}</div>
+                  <div className="font-korean text-xs text-muted-foreground">남음</div>
+                </div>
+              </div>
             </div>
 
             {dailyTasks.length === 0 ? (
@@ -902,8 +914,8 @@ export default function Goals() {
                 </Card>
               ))
             )}
-          </TabsContent>
-        </Tabs>
+          </div>
+        </div>
       </div>
     </div>
   );
