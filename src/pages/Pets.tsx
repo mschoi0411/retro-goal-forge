@@ -25,6 +25,7 @@ interface Pet {
   experience: number;
   is_main: boolean;
   stars: number;
+  last_main_change: string | null;
 }
 
 const rarityColors = {
@@ -108,11 +109,52 @@ export default function Pets() {
     }
   };
 
+  const canChangeMainPet = (lastChange: string | null): boolean => {
+    if (!lastChange) return true;
+    
+    const now = new Date();
+    const lastChangeDate = new Date(lastChange);
+    const hoursSinceChange = (now.getTime() - lastChangeDate.getTime()) / (1000 * 60 * 60);
+    
+    return hoursSinceChange >= 24;
+  };
+
+  const getTimeUntilChange = (lastChange: string | null): string => {
+    if (!lastChange) return "";
+    
+    const now = new Date();
+    const lastChangeDate = new Date(lastChange);
+    const hoursSinceChange = (now.getTime() - lastChangeDate.getTime()) / (1000 * 60 * 60);
+    const hoursRemaining = Math.ceil(24 - hoursSinceChange);
+    
+    if (hoursRemaining <= 0) return "";
+    return `${hoursRemaining}시간`;
+  };
+
   const setMainPet = async (id: string) => {
     const {
       data: { session },
     } = await supabase.auth.getSession();
     if (!session) return;
+
+    // Get current main pet to check last_main_change
+    const { data: currentMainPet } = await supabase
+      .from("pets")
+      .select("last_main_change")
+      .eq("user_id", session.user.id)
+      .eq("is_main", true)
+      .maybeSingle();
+
+    // Check if 24 hours have passed
+    if (currentMainPet && !canChangeMainPet(currentMainPet.last_main_change)) {
+      const timeLeft = getTimeUntilChange(currentMainPet.last_main_change);
+      toast({
+        title: "메인 펫을 변경할 수 없습니다",
+        description: `${timeLeft} 후에 다시 시도해주세요.`,
+        variant: "destructive",
+      });
+      return;
+    }
 
     // Set all pets to not main
     await supabase
@@ -120,10 +162,13 @@ export default function Pets() {
       .update({ is_main: false })
       .eq("user_id", session.user.id);
 
-    // Set selected pet as main
+    // Set selected pet as main with current timestamp
     const { error } = await supabase
       .from("pets")
-      .update({ is_main: true })
+      .update({ 
+        is_main: true,
+        last_main_change: new Date().toISOString()
+      })
       .eq("id", id);
 
     if (error) {
@@ -135,6 +180,7 @@ export default function Pets() {
     } else {
       toast({
         title: "메인 펫 설정 완료!",
+        description: "24시간 후에 다시 변경할 수 있습니다.",
       });
       loadPets();
     }
@@ -386,9 +432,17 @@ export default function Pets() {
                       size="sm"
                       onClick={() => setMainPet(pet.id)}
                       className="flex-1"
+                      disabled={pets.some(p => p.is_main && !canChangeMainPet(p.last_main_change))}
                     >
                       메인 설정
                     </Button>
+                  )}
+                  {pet.is_main && !canChangeMainPet(pet.last_main_change) && (
+                    <div className="flex-1 text-center py-2">
+                      <p className="font-korean text-xs text-muted-foreground">
+                        {getTimeUntilChange(pet.last_main_change)} 후 변경 가능
+                      </p>
+                    </div>
                   )}
                   <Button
                     variant="outline"

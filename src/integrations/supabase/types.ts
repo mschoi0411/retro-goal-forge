@@ -223,6 +223,7 @@ export type Database = {
           experience: number | null
           id: string
           is_main: boolean | null
+          last_main_change: string | null
           level: number | null
           name: string
           rarity: string | null
@@ -235,6 +236,7 @@ export type Database = {
           experience?: number | null
           id?: string
           is_main?: boolean | null
+          last_main_change?: string | null
           level?: number | null
           name: string
           rarity?: string | null
@@ -247,6 +249,7 @@ export type Database = {
           experience?: number | null
           id?: string
           is_main?: boolean | null
+          last_main_change?: string | null
           level?: number | null
           name?: string
           rarity?: string | null
