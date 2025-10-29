@@ -1,12 +1,65 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Users, Trophy, UserPlus, Heart, MessageCircle, ThumbsUp } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Community() {
   const [activeTab, setActiveTab] = useState("challenges");
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  const handleJoinChallenge = async (challengeTitle: string) => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      toast({
+        title: "로그인이 필요합니다",
+        variant: "destructive",
+      });
+      navigate("/auth");
+      return;
+    }
+
+    // Create or get chat room for this challenge
+    const { data: existingRoom } = await supabase
+      .from("chat_rooms")
+      .select("id")
+      .eq("challenge_id", challengeTitle)
+      .single();
+
+    let roomId = existingRoom?.id;
+
+    if (!roomId) {
+      const { data: newRoom, error } = await supabase
+        .from("chat_rooms")
+        .insert({
+          challenge_id: challengeTitle,
+          name: challengeTitle,
+        })
+        .select("id")
+        .single();
+
+      if (error) {
+        console.error("Error creating room:", error);
+        toast({
+          title: "채팅방 생성 실패",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      roomId = newRoom.id;
+    }
+
+    navigate(`/chat/${roomId}`);
+  };
 
   return (
     <div className="min-h-screen px-4 py-8">
@@ -74,7 +127,12 @@ export default function Community() {
                       </div>
                       <div>D-{challenge.days}</div>
                     </div>
-                    <Button variant="neon" size="sm" className="w-full mt-4">
+                    <Button 
+                      variant="neon" 
+                      size="sm" 
+                      className="w-full mt-4"
+                      onClick={() => handleJoinChallenge(challenge.title)}
+                    >
                       참가하기
                     </Button>
                   </CardContent>
