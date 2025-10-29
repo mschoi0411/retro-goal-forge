@@ -120,22 +120,28 @@ export type Database = {
       }
       chat_rooms: {
         Row: {
+          category: string | null
           challenge_id: string
           created_at: string
+          deadline: string | null
           id: string
           name: string
           updated_at: string
         }
         Insert: {
+          category?: string | null
           challenge_id: string
           created_at?: string
+          deadline?: string | null
           id?: string
           name: string
           updated_at?: string
         }
         Update: {
+          category?: string | null
           challenge_id?: string
           created_at?: string
+          deadline?: string | null
           id?: string
           name?: string
           updated_at?: string
@@ -246,6 +252,33 @@ export type Database = {
           rarity?: string | null
           stars?: number | null
           updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      posts: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          image_url: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
