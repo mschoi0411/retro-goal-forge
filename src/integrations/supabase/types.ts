@@ -148,40 +148,96 @@ export type Database = {
         }
         Relationships: []
       }
-      goals: {
+      daily_tasks: {
         Row: {
           completed: boolean | null
           created_at: string | null
-          difficulty: number | null
-          due_date: string | null
+          failed: boolean | null
+          goal_id: string
           id: string
-          powder_reward: number | null
-          progress: number | null
-          title: string
+          task_date: string
           updated_at: string | null
           user_id: string
         }
         Insert: {
           completed?: boolean | null
           created_at?: string | null
-          difficulty?: number | null
-          due_date?: string | null
+          failed?: boolean | null
+          goal_id: string
           id?: string
-          powder_reward?: number | null
-          progress?: number | null
-          title: string
+          task_date: string
           updated_at?: string | null
           user_id: string
         }
         Update: {
           completed?: boolean | null
           created_at?: string | null
+          failed?: boolean | null
+          goal_id?: string
+          id?: string
+          task_date?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_tasks_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      goals: {
+        Row: {
+          completed: boolean | null
+          completed_days: number | null
+          created_at: string | null
+          daily_powder_reward: number | null
+          difficulty: number | null
+          due_date: string | null
+          id: string
+          powder_reward: number | null
+          progress: number | null
+          schedule_days: number[] | null
+          schedule_type: string | null
+          title: string
+          total_days: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          completed?: boolean | null
+          completed_days?: number | null
+          created_at?: string | null
+          daily_powder_reward?: number | null
           difficulty?: number | null
           due_date?: string | null
           id?: string
           powder_reward?: number | null
           progress?: number | null
+          schedule_days?: number[] | null
+          schedule_type?: string | null
+          title: string
+          total_days?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          completed?: boolean | null
+          completed_days?: number | null
+          created_at?: string | null
+          daily_powder_reward?: number | null
+          difficulty?: number | null
+          due_date?: string | null
+          id?: string
+          powder_reward?: number | null
+          progress?: number | null
+          schedule_days?: number[] | null
+          schedule_type?: string | null
           title?: string
+          total_days?: number | null
           updated_at?: string | null
           user_id?: string
         }

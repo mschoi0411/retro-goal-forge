@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Check, Star, Calendar, TrendingUp } from "lucide-react";
+import { Plus, Check, Star, Calendar, TrendingUp, X, CheckCircle2, XCircle } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -21,6 +21,9 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Goal {
   id: string;
@@ -30,6 +33,20 @@ interface Goal {
   difficulty: number;
   powder_reward: number;
   due_date: string;
+  schedule_type: 'none' | 'daily' | 'specific_days' | 'final_day_only';
+  schedule_days: number[] | null;
+  daily_powder_reward: number;
+  total_days: number;
+  completed_days: number;
+}
+
+interface DailyTask {
+  id: string;
+  goal_id: string;
+  task_date: string;
+  completed: boolean;
+  failed: boolean;
+  goal?: Goal;
 }
 
 interface CalendarEvent {
@@ -41,10 +58,13 @@ interface CalendarEvent {
 
 export default function Goals() {
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([]);
   const [newGoalTitle, setNewGoalTitle] = useState("");
   const [newGoalDifficulty, setNewGoalDifficulty] = useState(1);
   const [newGoalDueDate, setNewGoalDueDate] = useState("");
   const [newGoalReward, setNewGoalReward] = useState(100);
+  const [scheduleType, setScheduleType] = useState<'none' | 'daily' | 'specific_days' | 'final_day_only'>('none');
+  const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
@@ -54,10 +74,21 @@ export default function Goals() {
   const { toast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const daysOfWeek = [
+    { label: "월", value: 1 },
+    { label: "화", value: 2 },
+    { label: "수", value: 3 },
+    { label: "목", value: 4 },
+    { label: "금", value: 5 },
+    { label: "토", value: 6 },
+    { label: "일", value: 0 },
+  ];
+
   useEffect(() => {
     checkAuth();
     loadGoals();
     loadCalendarEvents();
+    loadDailyTasks();
   }, []);
 
   useEffect(() => {
@@ -91,8 +122,96 @@ export default function Goals() {
       .order("created_at", { ascending: false });
 
     if (data) {
-      setGoals(data);
+      setGoals(data as Goal[]);
     }
+  };
+
+  const loadDailyTasks = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const today = new Date().toISOString().split('T')[0];
+
+    const { data: tasksData } = await supabase
+      .from("daily_tasks")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .eq("task_date", today);
+
+    if (tasksData) {
+      // Load goal details for each task
+      const tasksWithGoals = await Promise.all(
+        tasksData.map(async (task) => {
+          const { data: goalData } = await supabase
+            .from("goals")
+            .select("*")
+            .eq("id", task.goal_id)
+            .single();
+          
+          return { ...task, goal: goalData as Goal };
+        })
+      );
+      
+      setDailyTasks(tasksWithGoals as DailyTask[]);
+    }
+
+    // Generate daily tasks for today if needed
+    await generateDailyTasks();
+  };
+
+  const generateDailyTasks = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const todayDayOfWeek = today.getDay();
+
+    // Get all goals with schedules
+    const { data: goalsData } = await supabase
+      .from("goals")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .neq("schedule_type", "none");
+
+    if (!goalsData) return;
+
+    for (const goal of goalsData) {
+      // Check if task already exists for today
+      const { data: existingTask } = await supabase
+        .from("daily_tasks")
+        .select("id")
+        .eq("goal_id", goal.id)
+        .eq("task_date", todayStr)
+        .maybeSingle();
+
+      if (existingTask) continue;
+
+      let shouldCreateTask = false;
+
+      if (goal.schedule_type === "daily") {
+        shouldCreateTask = true;
+      } else if (goal.schedule_type === "specific_days" && goal.schedule_days) {
+        shouldCreateTask = goal.schedule_days.includes(todayDayOfWeek);
+      } else if (goal.schedule_type === "final_day_only" && goal.due_date) {
+        shouldCreateTask = goal.due_date === todayStr;
+      }
+
+      if (shouldCreateTask) {
+        await supabase.from("daily_tasks").insert({
+          goal_id: goal.id,
+          user_id: session.user.id,
+          task_date: todayStr,
+        });
+      }
+    }
+
+    // Reload tasks after generation
+    loadDailyTasks();
   };
 
   const loadCalendarEvents = async () => {
@@ -161,21 +280,19 @@ export default function Goals() {
     setNewGoalReward(reward);
   };
 
-  const toggleGoal = async (id: string, completed: boolean) => {
+  const completeDailyTask = async (taskId: string, goalId: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
 
-    const goal = goals.find((g) => g.id === id);
-    if (!goal) return;
+    const task = dailyTasks.find((t) => t.id === taskId);
+    const goal = goals.find((g) => g.id === goalId);
+    if (!task || !goal) return;
 
-    const newCompleted = !completed;
+    // Update task as completed
     const { error } = await supabase
-      .from("goals")
-      .update({
-        completed: newCompleted,
-        progress: newCompleted ? 100 : goal.progress,
-      })
-      .eq("id", id);
+      .from("daily_tasks")
+      .update({ completed: true })
+      .eq("id", taskId);
 
     if (error) {
       toast({
@@ -186,34 +303,174 @@ export default function Goals() {
       return;
     }
 
-    if (newCompleted) {
-      // Add powder reward
-      const { data: powderData } = await supabase
-        .from("user_powder")
-        .select("amount")
-        .eq("user_id", session.user.id)
-        .single();
+    // Add daily powder reward
+    const { data: powderData } = await supabase
+      .from("user_powder")
+      .select("amount")
+      .eq("user_id", session.user.id)
+      .single();
 
+    if (powderData) {
+      await supabase
+        .from("user_powder")
+        .update({ amount: powderData.amount + goal.daily_powder_reward })
+        .eq("user_id", session.user.id);
+    }
+
+    // Update goal progress
+    const newCompletedDays = (goal.completed_days || 0) + 1;
+    const newProgress = goal.total_days > 0 
+      ? Math.round((newCompletedDays / goal.total_days) * 100)
+      : goal.progress;
+
+    const isGoalCompleted = newProgress >= 100;
+
+    await supabase
+      .from("goals")
+      .update({
+        completed_days: newCompletedDays,
+        progress: newProgress,
+        completed: isGoalCompleted,
+      })
+      .eq("id", goalId);
+
+    // If goal is completed, give final reward
+    if (isGoalCompleted) {
       if (powderData) {
         await supabase
           .from("user_powder")
-          .update({ amount: powderData.amount + goal.powder_reward })
+          .update({ amount: powderData.amount + goal.daily_powder_reward + goal.powder_reward })
           .eq("user_id", session.user.id);
       }
 
       toast({
-        title: "목표 달성!",
-        description: `${goal.powder_reward} 가루를 획득했습니다!`,
+        title: "전체 목표 달성!",
+        description: `${goal.powder_reward} 가루를 추가로 획득했습니다!`,
+      });
+    } else {
+      toast({
+        title: "오늘의 목표 완료!",
+        description: `${goal.daily_powder_reward} 가루를 획득했습니다!`,
       });
     }
 
     loadGoals();
+    loadDailyTasks();
+  };
+
+  const failDailyTask = async (taskId: string, goalId: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const task = dailyTasks.find((t) => t.id === taskId);
+    const goal = goals.find((g) => g.id === goalId);
+    if (!task || !goal) return;
+
+    // Update task as failed
+    const { error } = await supabase
+      .from("daily_tasks")
+      .update({ failed: true })
+      .eq("id", taskId);
+
+    if (error) {
+      toast({
+        title: "오류 발생",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Deduct powder
+    const { data: powderData } = await supabase
+      .from("user_powder")
+      .select("amount")
+      .eq("user_id", session.user.id)
+      .single();
+
+    if (powderData) {
+      const newAmount = Math.max(0, powderData.amount - 30);
+      await supabase
+        .from("user_powder")
+        .update({ amount: newAmount })
+        .eq("user_id", session.user.id);
+    }
+
+    // Update goal progress
+    const newCompletedDays = (goal.completed_days || 0) + 1;
+    const newProgress = goal.total_days > 0 
+      ? Math.round((newCompletedDays / goal.total_days) * 100)
+      : goal.progress;
+
+    await supabase
+      .from("goals")
+      .update({
+        completed_days: newCompletedDays,
+        progress: newProgress,
+      })
+      .eq("id", goalId);
+
+    toast({
+      title: "목표 실패",
+      description: "30 가루가 차감되었습니다.",
+      variant: "destructive",
+    });
+
+    loadGoals();
+    loadDailyTasks();
+  };
+
+  const toggleDaySelection = (day: number) => {
+    setSelectedDays((prev) => {
+      if (prev.includes(day)) {
+        return prev.filter((d) => d !== day);
+      } else {
+        return [...prev, day];
+      }
+    });
+  };
+
+  const calculateTotalDays = () => {
+    if (!newGoalDueDate || scheduleType === 'none' || scheduleType === 'final_day_only') {
+      return 0;
+    }
+
+    const today = new Date();
+    const dueDate = new Date(newGoalDueDate);
+    const diffTime = dueDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays <= 0) return 0;
+
+    if (scheduleType === 'daily') {
+      return diffDays;
+    } else if (scheduleType === 'specific_days') {
+      let count = 0;
+      for (let i = 0; i <= diffDays; i++) {
+        const checkDate = new Date(today);
+        checkDate.setDate(today.getDate() + i);
+        if (selectedDays.includes(checkDate.getDay())) {
+          count++;
+        }
+      }
+      return count;
+    }
+
+    return 0;
   };
 
   const addGoal = async () => {
     if (!newGoalTitle.trim()) {
       toast({
         title: "제목을 입력해주세요",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (scheduleType === 'specific_days' && selectedDays.length === 0) {
+      toast({
+        title: "요일을 선택해주세요",
         variant: "destructive",
       });
       return;
@@ -226,12 +483,19 @@ export default function Goals() {
 
     setLoading(true);
 
+    const totalDays = calculateTotalDays();
+
     const { error } = await supabase.from("goals").insert({
       user_id: session.user.id,
       title: newGoalTitle,
       difficulty: newGoalDifficulty,
       due_date: newGoalDueDate || null,
       powder_reward: newGoalReward,
+      schedule_type: scheduleType,
+      schedule_days: scheduleType === 'specific_days' ? selectedDays : null,
+      daily_powder_reward: 50,
+      total_days: totalDays,
+      completed_days: 0,
     });
 
     if (error) {
@@ -248,8 +512,11 @@ export default function Goals() {
       setNewGoalDifficulty(1);
       setNewGoalDueDate("");
       setNewGoalReward(100);
+      setScheduleType('none');
+      setSelectedDays([]);
       setOpen(false);
       loadGoals();
+      loadDailyTasks();
     }
 
     setLoading(false);
@@ -257,6 +524,29 @@ export default function Goals() {
 
   const completedCount = goals.filter((g) => g.completed).length;
   const remainingCount = goals.length - completedCount;
+  const todayTasksCompleted = dailyTasks.filter((t) => t.completed).length;
+  const todayTasksRemaining = dailyTasks.filter((t) => !t.completed && !t.failed).length;
+
+  const getScheduleLabel = (goal: Goal) => {
+    if (goal.schedule_type === 'daily') return '매일';
+    if (goal.schedule_type === 'specific_days' && goal.schedule_days) {
+      const dayLabels = goal.schedule_days
+        .sort((a, b) => (a === 0 ? 7 : a) - (b === 0 ? 7 : b))
+        .map((d) => daysOfWeek.find((day) => day.value === d)?.label)
+        .join(',');
+      return dayLabels;
+    }
+    if (goal.schedule_type === 'final_day_only') return '마지막날';
+    return '';
+  };
+
+  const getDaysRemaining = (dueDate: string) => {
+    const today = new Date();
+    const due = new Date(dueDate);
+    const diffTime = due.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
 
   return (
     <div className="min-h-screen px-4 py-8">
@@ -400,6 +690,49 @@ export default function Goals() {
                     className="bg-muted"
                   />
                 </div>
+                <div>
+                  <Label className="font-korean mb-3 block">일정 반복</Label>
+                  <RadioGroup value={scheduleType} onValueChange={(value: any) => setScheduleType(value)}>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="none" id="none" />
+                      <Label htmlFor="none" className="font-korean cursor-pointer">없음</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="daily" id="daily" />
+                      <Label htmlFor="daily" className="font-korean cursor-pointer">매일</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="specific_days" id="specific_days" />
+                      <Label htmlFor="specific_days" className="font-korean cursor-pointer">특정 요일</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="final_day_only" id="final_day_only" />
+                      <Label htmlFor="final_day_only" className="font-korean cursor-pointer">마지막날만</Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+                {scheduleType === 'specific_days' && (
+                  <div>
+                    <Label className="font-korean mb-2 block">요일 선택</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {daysOfWeek.map((day) => (
+                        <div key={day.value} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`day-${day.value}`}
+                            checked={selectedDays.includes(day.value)}
+                            onCheckedChange={() => toggleDaySelection(day.value)}
+                          />
+                          <Label
+                            htmlFor={`day-${day.value}`}
+                            className="font-korean cursor-pointer"
+                          >
+                            {day.label}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <Button
                   onClick={addGoal}
                   variant="hero"
@@ -413,67 +746,162 @@ export default function Goals() {
           </Dialog>
         </div>
 
-        <div className="space-y-4 mb-12">
-          {goals.map((goal, index) => (
-            <Card
-              key={goal.id}
-              className="bg-card border-2 border-border hover:border-primary transition-all shadow-card animate-slide-up"
-              style={{ animationDelay: `${index * 50}ms` }}
-            >
-              <CardContent className="p-6">
-                <div className="flex items-start gap-4">
-                  <button
-                    onClick={() => toggleGoal(goal.id, goal.completed)}
-                    className={cn(
-                      "w-6 h-6 rounded-sm border-2 flex-shrink-0 flex items-center justify-center transition-all mt-1",
-                      goal.completed
-                        ? "bg-success border-success shadow-neon"
-                        : "border-border hover:border-primary"
-                    )}
-                  >
-                    {goal.completed && <Check className="w-4 h-4 text-success-foreground" />}
-                  </button>
+        <Tabs defaultValue="overall" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 mb-6">
+            <TabsTrigger value="overall" className="font-korean">전체 일정</TabsTrigger>
+            <TabsTrigger value="daily" className="font-korean">하루 일정</TabsTrigger>
+          </TabsList>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
-                      <div>
-                        <h3
-                          className={cn(
-                            "font-korean text-lg",
-                            goal.completed ? "text-muted-foreground line-through" : "text-foreground"
-                          )}
-                        >
-                          {goal.title}
-                        </h3>
-                        <div className="font-korean text-xs text-muted-foreground mt-1">
-                          보상: {goal.powder_reward} 가루
+          <TabsContent value="overall" className="space-y-4 mb-12">
+            {goals.map((goal, index) => (
+              <Card
+                key={goal.id}
+                className="bg-card border-2 border-border hover:border-primary transition-all shadow-card animate-slide-up"
+                style={{ animationDelay: `${index * 50}ms` }}
+              >
+                <CardContent className="p-6">
+                  <div className="flex items-start gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+                        <div>
+                          <h3
+                            className={cn(
+                              "font-korean text-lg",
+                              goal.completed ? "text-muted-foreground line-through" : "text-foreground"
+                            )}
+                          >
+                            {goal.title}
+                            {goal.due_date && ` (${getDaysRemaining(goal.due_date)}일 남음${getScheduleLabel(goal) ? `, ${getScheduleLabel(goal)}` : ''})`}
+                          </h3>
+                          <div className="font-korean text-xs text-muted-foreground mt-1">
+                            보상: {goal.powder_reward} 가루
+                            {goal.schedule_type !== 'none' && ` | 일일 보상: ${goal.daily_powder_reward} 가루`}
+                          </div>
+                        </div>
+                        <div className="flex gap-1">
+                          {Array.from({ length: goal.difficulty }).map((_, i) => (
+                            <Star key={i} className="w-4 h-4 text-warning fill-warning" />
+                          ))}
                         </div>
                       </div>
-                      <div className="flex gap-1">
-                        {Array.from({ length: goal.difficulty }).map((_, i) => (
-                          <Star key={i} className="w-4 h-4 text-warning fill-warning" />
-                        ))}
+
+                      <div className="space-y-2">
+                        <Progress value={goal.progress} className="h-2" />
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-korean text-muted-foreground">
+                          <span>
+                            진행률: {goal.progress}%
+                            {goal.total_days > 0 && ` (${goal.completed_days}/${goal.total_days}일)`}
+                          </span>
+                          {goal.due_date && (
+                            <div className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              <span>{goal.due_date}</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </TabsContent>
 
-                    <div className="space-y-2">
-                      <Progress value={goal.progress} className="h-2" />
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-korean text-muted-foreground">
-                        <span>진행률: {goal.progress}%</span>
-                        {goal.due_date && (
-                          <div className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            <span>{goal.due_date}</span>
+          <TabsContent value="daily" className="space-y-4 mb-12">
+            <div className="flex gap-4 mb-6">
+              <Card className="flex-1 bg-card/50 border-2 border-success">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-success" />
+                  <div>
+                    <div className="font-pixel text-xl text-success">{todayTasksCompleted}</div>
+                    <div className="font-korean text-xs text-muted-foreground">완료</div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="flex-1 bg-card/50 border-2 border-warning">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <TrendingUp className="w-5 h-5 text-warning" />
+                  <div>
+                    <div className="font-pixel text-xl text-warning">{todayTasksRemaining}</div>
+                    <div className="font-korean text-xs text-muted-foreground">남은 작업</div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {dailyTasks.length === 0 ? (
+              <Card className="bg-card border-2 border-border">
+                <CardContent className="p-8 text-center">
+                  <p className="font-korean text-muted-foreground">오늘의 일정이 없습니다.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              dailyTasks.map((task, index) => (
+                <Card
+                  key={task.id}
+                  className={cn(
+                    "bg-card border-2 transition-all shadow-card animate-slide-up",
+                    task.completed ? "border-success" : task.failed ? "border-destructive" : "border-border"
+                  )}
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
+                  <CardContent className="p-6">
+                    <div className="flex items-start gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+                          <div>
+                            <h3 className="font-korean text-lg text-foreground">
+                              {task.goal?.title}
+                            </h3>
+                            <div className="font-korean text-xs text-muted-foreground mt-1">
+                              보상: {task.goal?.daily_powder_reward || 50} 가루
+                            </div>
+                          </div>
+                          {task.goal && (
+                            <div className="flex gap-1">
+                              {Array.from({ length: task.goal.difficulty }).map((_, i) => (
+                                <Star key={i} className="w-4 h-4 text-warning fill-warning" />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {!task.completed && !task.failed ? (
+                          <div className="flex gap-2 mt-4">
+                            <Button
+                              onClick={() => completeDailyTask(task.id, task.goal_id)}
+                              variant="default"
+                              size="sm"
+                              className="flex-1"
+                            >
+                              <CheckCircle2 className="w-4 h-4 mr-2" />
+                              완료
+                            </Button>
+                            <Button
+                              onClick={() => failDailyTask(task.id, task.goal_id)}
+                              variant="destructive"
+                              size="sm"
+                              className="flex-1"
+                            >
+                              <XCircle className="w-4 h-4 mr-2" />
+                              실패
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="mt-4 p-3 rounded-lg bg-muted">
+                            <p className="font-korean text-sm text-center">
+                              {task.completed ? "✅ 완료됨" : "❌ 실패"}
+                            </p>
                           </div>
                         )}
                       </div>
                     </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
