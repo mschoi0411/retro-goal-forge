@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Calendar as CalendarUI } from "@/components/ui/calendar";
-import { Plus } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -16,31 +16,50 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
-interface CalendarEvent {
+interface GoogleCalendarEvent {
   id: string;
-  title: string;
-  description: string;
-  start_date: string;
-  end_date: string;
+  summary: string;
+  description?: string;
+  start: {
+    dateTime?: string;
+    date?: string;
+  };
+  end: {
+    dateTime?: string;
+    date?: string;
+  };
 }
 
 export default function Calendar() {
   const [date, setDate] = useState<Date | undefined>(new Date());
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [events, setEvents] = useState<GoogleCalendarEvent[]>([]);
   const [newEventTitle, setNewEventTitle] = useState("");
   const [newEventDescription, setNewEventDescription] = useState("");
   const [newEventStartDate, setNewEventStartDate] = useState("");
   const [newEventEndDate, setNewEventEndDate] = useState("");
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [connecting, setConnecting] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "YOUR_GOOGLE_CLIENT_ID";
+  const REDIRECT_URI = `${window.location.origin}/calendar`;
+
   useEffect(() => {
     checkAuth();
-    loadEvents();
+    checkGoogleConnection();
+    handleOAuthCallback();
   }, []);
+
+  useEffect(() => {
+    if (isConnected) {
+      loadGoogleEvents();
+    }
+  }, [isConnected]);
 
   const checkAuth = async () => {
     const {
@@ -56,20 +75,101 @@ export default function Calendar() {
     }
   };
 
-  const loadEvents = async () => {
+  const checkGoogleConnection = async () => {
     const {
       data: { session },
     } = await supabase.auth.getSession();
     if (!session) return;
 
     const { data } = await supabase
-      .from("calendar_events")
-      .select("*")
+      .from("google_tokens")
+      .select("id")
       .eq("user_id", session.user.id)
-      .order("start_date", { ascending: true });
+      .single();
 
-    if (data) {
-      setEvents(data);
+    setIsConnected(!!data);
+  };
+
+  const handleOAuthCallback = async () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get("code");
+
+    if (!code) return;
+
+    setConnecting(true);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const { error } = await supabase.functions.invoke("google-calendar", {
+        body: {
+          action: "exchange-token",
+          code,
+          redirectUri: REDIRECT_URI,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "구글 캘린더 연동 완료!",
+      });
+
+      setIsConnected(true);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } catch (error) {
+      console.error("OAuth callback error:", error);
+      toast({
+        title: "연동 실패",
+        description: "구글 캘린더 연동에 실패했습니다.",
+        variant: "destructive",
+      });
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const connectGoogleCalendar = () => {
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      response_type: "code",
+      scope: "https://www.googleapis.com/auth/calendar",
+      access_type: "offline",
+      prompt: "consent",
+    })}`;
+
+    window.location.href = authUrl;
+  };
+
+  const loadGoogleEvents = async () => {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const { data, error } = await supabase.functions.invoke("google-calendar", {
+        body: {
+          action: "get-events",
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.events) {
+        setEvents(data.events);
+      }
+    } catch (error) {
+      console.error("Failed to load events:", error);
+      toast({
+        title: "일정 불러오기 실패",
+        description: "구글 캘린더 일정을 불러올 수 없습니다.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -83,6 +183,15 @@ export default function Calendar() {
       return;
     }
 
+    if (!isConnected) {
+      toast({
+        title: "구글 캘린더 연동 필요",
+        description: "먼저 구글 캘린더를 연동해주세요.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -90,30 +199,35 @@ export default function Calendar() {
 
     setLoading(true);
 
-    const { error } = await supabase.from("calendar_events").insert({
-      user_id: session.user.id,
-      title: newEventTitle,
-      description: newEventDescription,
-      start_date: newEventStartDate,
-      end_date: newEventEndDate || newEventStartDate,
-    });
-
-    if (error) {
-      toast({
-        title: "오류 발생",
-        description: error.message,
-        variant: "destructive",
+    try {
+      const { error } = await supabase.functions.invoke("google-calendar", {
+        body: {
+          action: "create-event",
+          title: newEventTitle,
+          description: newEventDescription,
+          startDate: newEventStartDate,
+          endDate: newEventEndDate || newEventStartDate,
+        },
       });
-    } else {
+
+      if (error) throw error;
+
       toast({
         title: "일정 추가 완료!",
       });
+
       setNewEventTitle("");
       setNewEventDescription("");
       setNewEventStartDate("");
       setNewEventEndDate("");
       setOpen(false);
-      loadEvents();
+      loadGoogleEvents();
+    } catch (error) {
+      toast({
+        title: "오류 발생",
+        description: "일정 추가에 실패했습니다.",
+        variant: "destructive",
+      });
     }
 
     setLoading(false);
@@ -121,7 +235,10 @@ export default function Calendar() {
 
   const selectedDateEvents = events.filter((event) => {
     if (!date) return false;
-    const eventDate = new Date(event.start_date);
+    const eventDateStr = event.start.dateTime || event.start.date;
+    if (!eventDateStr) return false;
+    
+    const eventDate = new Date(eventDateStr);
     return (
       eventDate.getDate() === date.getDate() &&
       eventDate.getMonth() === date.getMonth() &&
@@ -135,13 +252,44 @@ export default function Calendar() {
         <div className="mb-8 animate-slide-up">
           <h1 className="font-pixel text-2xl sm:text-3xl mb-4 text-foreground">캘린더</h1>
 
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button variant="hero" size="lg" className="w-full sm:w-auto mb-6">
-                <Plus className="w-5 h-5" />
-                일정 추가
+          {!isConnected && !connecting && (
+            <Alert className="mb-6">
+              <CalendarIcon className="h-4 w-4" />
+              <AlertDescription className="font-korean">
+                구글 캘린더를 연동하여 일정을 관리하세요.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {connecting && (
+            <Alert className="mb-6">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+              <AlertDescription className="font-korean">
+                구글 캘린더 연동 중...
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <div className="flex gap-3 mb-6 flex-wrap">
+            {!isConnected ? (
+              <Button 
+                variant="hero" 
+                size="lg" 
+                onClick={connectGoogleCalendar}
+                disabled={connecting}
+              >
+                <CalendarIcon className="w-5 h-5" />
+                {connecting ? "연동 중..." : "구글 캘린더 연동"}
               </Button>
-            </DialogTrigger>
+            ) : (
+              <>
+                <Dialog open={open} onOpenChange={setOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="hero" size="lg">
+                      <Plus className="w-5 h-5" />
+                      일정 추가
+                    </Button>
+                  </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle className="font-pixel">새로운 일정 추가</DialogTitle>
@@ -200,8 +348,19 @@ export default function Calendar() {
                   {loading ? "추가 중..." : "일정 추가"}
                 </Button>
               </div>
-            </DialogContent>
-          </Dialog>
+                  </DialogContent>
+                </Dialog>
+                <Button 
+                  variant="outline" 
+                  size="lg"
+                  onClick={loadGoogleEvents}
+                >
+                  <RefreshCw className="w-5 h-5" />
+                  새로고침
+                </Button>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -227,22 +386,25 @@ export default function Calendar() {
                     이날은 일정이 없습니다.
                   </p>
                 ) : (
-                  selectedDateEvents.map((event) => (
-                    <div
-                      key={event.id}
-                      className="p-4 bg-muted/50 rounded-sm border border-border hover:border-primary transition-all"
-                    >
-                      <h4 className="font-korean font-bold">{event.title}</h4>
-                      {event.description && (
-                        <p className="font-korean text-sm text-muted-foreground mt-1">
-                          {event.description}
+                  selectedDateEvents.map((event) => {
+                    const startDate = event.start.dateTime || event.start.date;
+                    return (
+                      <div
+                        key={event.id}
+                        className="p-4 bg-muted/50 rounded-sm border border-border hover:border-primary transition-all"
+                      >
+                        <h4 className="font-korean font-bold">{event.summary}</h4>
+                        {event.description && (
+                          <p className="font-korean text-sm text-muted-foreground mt-1">
+                            {event.description}
+                          </p>
+                        )}
+                        <p className="font-korean text-xs text-muted-foreground mt-2">
+                          {startDate ? new Date(startDate).toLocaleString("ko-KR") : ""}
                         </p>
-                      )}
-                      <p className="font-korean text-xs text-muted-foreground mt-2">
-                        {new Date(event.start_date).toLocaleString("ko-KR")}
-                      </p>
-                    </div>
-                  ))
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </CardContent>
@@ -258,26 +420,29 @@ export default function Calendar() {
                   등록된 일정이 없습니다.
                 </p>
               ) : (
-                events.map((event) => (
-                  <div
-                    key={event.id}
-                    className="p-4 bg-muted/50 rounded-sm border border-border hover:border-primary transition-all"
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-korean font-bold">{event.title}</h4>
-                        {event.description && (
-                          <p className="font-korean text-sm text-muted-foreground mt-1">
-                            {event.description}
-                          </p>
-                        )}
+                events.map((event) => {
+                  const startDate = event.start.dateTime || event.start.date;
+                  return (
+                    <div
+                      key={event.id}
+                      className="p-4 bg-muted/50 rounded-sm border border-border hover:border-primary transition-all"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h4 className="font-korean font-bold">{event.summary}</h4>
+                          {event.description && (
+                            <p className="font-korean text-sm text-muted-foreground mt-1">
+                              {event.description}
+                            </p>
+                          )}
+                        </div>
+                        <p className="font-korean text-xs text-muted-foreground">
+                          {startDate ? new Date(startDate).toLocaleDateString("ko-KR") : ""}
+                        </p>
                       </div>
-                      <p className="font-korean text-xs text-muted-foreground">
-                        {new Date(event.start_date).toLocaleDateString("ko-KR")}
-                      </p>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </CardContent>
