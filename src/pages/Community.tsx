@@ -26,6 +26,7 @@ export default function Community() {
   });
   
   // Post creation state
+  const [isPostDialogOpen, setIsPostDialogOpen] = useState(false);
   const [postContent, setPostContent] = useState("");
   const [postImage, setPostImage] = useState<File | null>(null);
   const [posts, setPosts] = useState<any[]>([]);
@@ -222,6 +223,7 @@ export default function Community() {
       });
       setPostContent("");
       setPostImage(null);
+      setIsPostDialogOpen(false);
       loadPosts();
     }
 
@@ -374,41 +376,59 @@ export default function Community() {
           </TabsContent>
 
           <TabsContent value="feed" className="space-y-6">
-            <Card className="bg-card border-2 border-border shadow-card">
+            <Card className="bg-gradient-primary border-2 border-primary shadow-neon">
               <CardContent className="p-6">
-                <Textarea
-                  placeholder="무슨 생각을 하고 계신가요?"
-                  value={postContent}
-                  onChange={(e) => setPostContent(e.target.value)}
-                  className="font-korean mb-4 min-h-[100px]"
-                />
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => setPostImage(e.target.files?.[0] || null)}
-                      className="hidden"
-                      id="post-image"
-                    />
-                    <Label htmlFor="post-image" className="cursor-pointer">
-                      <div className="flex items-center gap-2 px-4 py-2 border-2 border-border rounded-sm hover:border-primary transition-colors">
-                        <ImageIcon className="w-4 h-4" />
-                        <span className="font-korean text-sm">
-                          {postImage ? postImage.name : "이미지 추가"}
-                        </span>
+                <Dialog open={isPostDialogOpen} onOpenChange={setIsPostDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="hero" size="lg" className="w-full sm:w-auto">
+                      <Send className="w-5 h-5" />
+                      피드 작성하기
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[600px]">
+                    <DialogHeader>
+                      <DialogTitle className="font-korean text-xl">새 게시글 작성</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="post-content" className="font-korean">내용</Label>
+                        <Textarea
+                          id="post-content"
+                          placeholder="무슨 생각을 하고 계신가요?"
+                          value={postContent}
+                          onChange={(e) => setPostContent(e.target.value)}
+                          className="font-korean min-h-[150px]"
+                        />
                       </div>
-                    </Label>
-                  </div>
-                  <Button 
-                    variant="neon" 
-                    onClick={handleCreatePost}
-                    disabled={isPostLoading}
-                  >
-                    <Send className="w-4 h-4" />
-                    게시
-                  </Button>
-                </div>
+                      <div className="space-y-2">
+                        <Label className="font-korean">이미지 (선택)</Label>
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => setPostImage(e.target.files?.[0] || null)}
+                          className="hidden"
+                          id="post-image-dialog"
+                        />
+                        <Label htmlFor="post-image-dialog" className="cursor-pointer">
+                          <div className="flex items-center gap-2 px-4 py-3 border-2 border-border rounded-sm hover:border-primary transition-colors">
+                            <ImageIcon className="w-5 h-5" />
+                            <span className="font-korean">
+                              {postImage ? postImage.name : "이미지 선택"}
+                            </span>
+                          </div>
+                        </Label>
+                      </div>
+                      <Button 
+                        variant="neon" 
+                        className="w-full"
+                        onClick={handleCreatePost}
+                        disabled={isPostLoading}
+                      >
+                        {isPostLoading ? "게시 중..." : "게시하기"}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </CardContent>
             </Card>
 
