@@ -11,7 +11,7 @@ export const EXP_REQUIRED: Record<number, number> = {
   9: 1100,
 };
 
-// 레벨별 가루 보상
+// 레벨별 가루 보상 (기본 보상 100가루 기준)
 export const LEVEL_REWARDS: Record<number, number> = {
   1: 100,
   2: 110,
@@ -24,6 +24,27 @@ export const LEVEL_REWARDS: Record<number, number> = {
   9: 460,
   10: 550,
 };
+
+// 레벨별 보너스 비율 (0% ~ 450%)
+export const LEVEL_BONUS: Record<number, number> = {
+  1: 0,
+  2: 0.10,
+  3: 0.30,
+  4: 0.60,
+  5: 1.00,
+  6: 1.50,
+  7: 2.10,
+  8: 2.80,
+  9: 3.60,
+  10: 4.50,
+};
+
+// 도전 과제 보상에 레벨 보너스 적용
+export function calculateGaruWithLevelBonus(baseGaru: number, level: number): number {
+  const clampedLevel = Math.max(1, Math.min(level, 10));
+  const bonus = LEVEL_BONUS[clampedLevel] || 0;
+  return Math.floor(baseGaru * (1 + bonus));
+}
 
 // 경험치 상수
 export const EXP_CONSTANTS = {

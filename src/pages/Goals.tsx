@@ -23,6 +23,7 @@ import {
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { calculateGaruWithLevelBonus } from "@/utils/petLevel";
 
 
 interface Goal {
@@ -288,6 +289,20 @@ export default function Goals() {
     const goal = goals.find((g) => g.id === goalId);
     if (!task || !goal) return;
 
+    // Get main pet level for bonus calculation
+    const { data: mainPet } = await supabase
+      .from("pets")
+      .select("level")
+      .eq("user_id", session.user.id)
+      .eq("is_main", true)
+      .maybeSingle();
+
+    const mainPetLevel = mainPet?.level || 1;
+
+    // Calculate daily reward with level bonus
+    const baseDailyReward = goal.daily_powder_reward;
+    const dailyRewardWithBonus = calculateGaruWithLevelBonus(baseDailyReward, mainPetLevel);
+
     // Update task as completed
     const { error } = await supabase
       .from("daily_tasks")
@@ -313,7 +328,7 @@ export default function Goals() {
     if (powderData) {
       await supabase
         .from("user_powder")
-        .update({ amount: powderData.amount + goal.daily_powder_reward })
+        .update({ amount: powderData.amount + dailyRewardWithBonus })
         .eq("user_id", session.user.id);
     }
 
@@ -334,23 +349,28 @@ export default function Goals() {
       })
       .eq("id", goalId);
 
-    // If goal is completed, give final reward
+    // If goal is completed, give final reward with level bonus
     if (isGoalCompleted) {
+      const baseFinalReward = goal.powder_reward;
+      const finalRewardWithBonus = calculateGaruWithLevelBonus(baseFinalReward, mainPetLevel);
+      
       if (powderData) {
         await supabase
           .from("user_powder")
-          .update({ amount: powderData.amount + goal.daily_powder_reward + goal.powder_reward })
+          .update({ amount: powderData.amount + dailyRewardWithBonus + finalRewardWithBonus })
           .eq("user_id", session.user.id);
       }
 
+      const bonusPercent = Math.round(((finalRewardWithBonus - baseFinalReward) / baseFinalReward) * 100);
       toast({
         title: "전체 목표 달성!",
-        description: `${goal.powder_reward} 가루를 추가로 획득했습니다!`,
+        description: `${finalRewardWithBonus} 가루 획득! (기본 ${baseFinalReward} + 레벨 보너스 ${bonusPercent}%)`,
       });
     } else {
+      const bonusPercent = Math.round(((dailyRewardWithBonus - baseDailyReward) / baseDailyReward) * 100);
       toast({
         title: "오늘의 목표 완료!",
-        description: `${goal.daily_powder_reward} 가루를 획득했습니다!`,
+        description: `${dailyRewardWithBonus} 가루 획득! (기본 ${baseDailyReward} + 레벨 보너스 ${bonusPercent}%)`,
       });
     }
 

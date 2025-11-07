@@ -17,6 +17,12 @@ import {
 import PetRevealAnimation from "@/components/PetRevealAnimation";
 import { getRandomPetName } from "@/data/petNames";
 import { getExpProgress, getExpRequiredForNextLevel } from "@/utils/petLevel";
+import { 
+  attemptUpgrade, 
+  FRAGMENTS_FOR_GUARANTEED_UPGRADE,
+  getUpgradeCost,
+  UPGRADE_SUCCESS_RATES 
+} from "@/utils/upgradeSystem";
 
 interface Pet {
   id: string;
@@ -46,6 +52,7 @@ const rarityBg = {
 export default function Pets() {
   const [pets, setPets] = useState<Pet[]>([]);
   const [powder, setPowder] = useState(0);
+  const [starFragments, setStarFragments] = useState(0);
   const [openUpgrade, setOpenUpgrade] = useState(false);
   const [selectedPet, setSelectedPet] = useState<Pet | null>(null);
   const [loading, setLoading] = useState(false);
@@ -53,6 +60,7 @@ export default function Pets() {
   const [revealPet, setRevealPet] = useState<{ name: string; rarity: Pet["rarity"] } | null>(null);
   const [editingPet, setEditingPet] = useState<Pet | null>(null);
   const [editName, setEditName] = useState("");
+  const [useGuaranteedUpgrade, setUseGuaranteedUpgrade] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -101,12 +109,13 @@ export default function Pets() {
 
     const { data } = await supabase
       .from("user_powder")
-      .select("amount")
+      .select("amount, star_fragments")
       .eq("user_id", session.user.id)
       .single();
 
     if (data) {
       setPowder(data.amount);
+      setStarFragments(data.star_fragments || 0);
     }
   };
 
@@ -280,14 +289,27 @@ export default function Pets() {
   const upgradePet = async () => {
     if (!selectedPet) return;
 
-    const cost = (selectedPet.stars + 1) * 100;
-    if (powder < cost) {
-      toast({
-        title: "가루가 부족합니다",
-        description: `${cost} 가루가 필요합니다.`,
-        variant: "destructive",
-      });
-      return;
+    const cost = getUpgradeCost(selectedPet.stars);
+    
+    // Check if using guaranteed upgrade
+    if (useGuaranteedUpgrade) {
+      if (starFragments < FRAGMENTS_FOR_GUARANTEED_UPGRADE) {
+        toast({
+          title: "별 조각이 부족합니다",
+          description: `확정 강화에는 ${FRAGMENTS_FOR_GUARANTEED_UPGRADE}개가 필요합니다.`,
+          variant: "destructive",
+        });
+        return;
+      }
+    } else {
+      if (powder < cost) {
+        toast({
+          title: "가루가 부족합니다",
+          description: `${cost} 가루가 필요합니다.`,
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     const {
@@ -297,34 +319,83 @@ export default function Pets() {
 
     setLoading(true);
 
-    const { error } = await supabase
-      .from("pets")
-      .update({ stars: selectedPet.stars + 1 })
-      .eq("id", selectedPet.id);
+    try {
+      let success = false;
+      let fragmentsGained = 0;
 
-    if (error) {
-      toast({
-        title: "오류 발생",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
-      await supabase
-        .from("user_powder")
-        .update({ amount: powder - cost })
-        .eq("user_id", session.user.id);
+      if (useGuaranteedUpgrade) {
+        // Guaranteed success
+        success = true;
+        
+        // Deduct fragments
+        await supabase
+          .from("user_powder")
+          .update({ star_fragments: starFragments - FRAGMENTS_FOR_GUARANTEED_UPGRADE })
+          .eq("user_id", session.user.id);
+      } else {
+        // Attempt upgrade with probability
+        const result = attemptUpgrade(selectedPet.stars);
+        success = result.success;
+        fragmentsGained = result.fragmentsGained;
 
-      toast({
-        title: "강화 완료!",
-        description: `${cost} 가루를 사용했습니다.`,
+        // Deduct powder
+        await supabase
+          .from("user_powder")
+          .update({ amount: powder - cost })
+          .eq("user_id", session.user.id);
+
+        // Add fragments if failed
+        if (!success) {
+          await supabase
+            .from("user_powder")
+            .update({ star_fragments: starFragments + fragmentsGained })
+            .eq("user_id", session.user.id);
+        }
+      }
+
+      // Log upgrade attempt
+      await supabase.from("upgrade_logs").insert({
+        pet_id: selectedPet.id,
+        user_id: session.user.id,
+        current_stars: selectedPet.stars,
+        success,
+        fragments_gained: fragmentsGained,
       });
+
+      // Update pet stars if successful
+      if (success) {
+        await supabase
+          .from("pets")
+          .update({ stars: selectedPet.stars + 1 })
+          .eq("id", selectedPet.id);
+
+        toast({
+          title: "강화 성공!",
+          description: `${selectedPet.name}이(가) ★${selectedPet.stars + 1}로 강화되었습니다!`,
+        });
+      } else {
+        toast({
+          title: "강화 실패",
+          description: `별 조각 ${fragmentsGained}개를 획득했습니다. (${starFragments + fragmentsGained}/${FRAGMENTS_FOR_GUARANTEED_UPGRADE})`,
+          variant: "destructive",
+        });
+      }
+
       setOpenUpgrade(false);
       setSelectedPet(null);
+      setUseGuaranteedUpgrade(false);
       loadPets();
       loadPowder();
+    } catch (error) {
+      console.error("Upgrade error:", error);
+      toast({
+        title: "오류 발생",
+        description: "강화 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   return (
@@ -342,6 +413,17 @@ export default function Pets() {
                 <div>
                   <div className="font-korean text-sm text-primary-foreground/80">보유 가루</div>
                   <div className="font-pixel text-2xl text-primary-foreground">{powder}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 bg-accent rounded-lg flex items-center justify-center animate-pulse-glow">
+                  <Star className="w-8 h-8 text-accent-foreground" />
+                </div>
+                <div>
+                  <div className="font-korean text-sm text-primary-foreground/80">별 조각</div>
+                  <div className="font-pixel text-2xl text-primary-foreground">
+                    {starFragments}/{FRAGMENTS_FOR_GUARANTEED_UPGRADE}
+                  </div>
                 </div>
               </div>
               <Button 
@@ -512,25 +594,62 @@ export default function Pets() {
                     ))}
                   </div>
                 </div>
+                
                 <div className="p-4 bg-muted rounded-sm space-y-2">
                   <p className="font-korean text-sm text-muted-foreground">
                     현재 강화 단계: {selectedPet.stars}★
                   </p>
-                  <p className="font-korean text-sm text-muted-foreground">
-                    강화 비용: {(selectedPet.stars + 1) * 100} 가루
+                  <p className="font-korean text-sm text-foreground font-bold">
+                    강화 성공 확률: {UPGRADE_SUCCESS_RATES[selectedPet.stars] || 0}%
                   </p>
                   <p className="font-korean text-sm text-muted-foreground">
-                    보유 가루: {powder}
+                    실패 시: 별 조각 +1
                   </p>
                 </div>
-                <Button
-                  onClick={upgradePet}
-                  variant="hero"
-                  className="w-full"
-                  disabled={loading}
-                >
-                  {loading ? "강화 중..." : "강화하기"}
-                </Button>
+
+                {/* Normal Upgrade */}
+                <div className="p-4 bg-card/50 rounded-sm border-2 border-border space-y-2">
+                  <h4 className="font-pixel text-sm text-foreground">일반 강화</h4>
+                  <p className="font-korean text-sm text-muted-foreground">
+                    비용: {getUpgradeCost(selectedPet.stars)} 가루
+                  </p>
+                  <p className="font-korean text-sm text-muted-foreground">
+                    보유: {powder} 가루
+                  </p>
+                  <Button
+                    onClick={() => {
+                      setUseGuaranteedUpgrade(false);
+                      upgradePet();
+                    }}
+                    variant="default"
+                    className="w-full"
+                    disabled={loading || powder < getUpgradeCost(selectedPet.stars)}
+                  >
+                    {loading ? "강화 중..." : "일반 강화"}
+                  </Button>
+                </div>
+
+                {/* Guaranteed Upgrade */}
+                <div className="p-4 bg-warning/10 rounded-sm border-2 border-warning space-y-2">
+                  <h4 className="font-pixel text-sm text-warning">확정 강화</h4>
+                  <p className="font-korean text-sm text-muted-foreground">
+                    비용: {FRAGMENTS_FOR_GUARANTEED_UPGRADE} 별 조각 (100% 성공)
+                  </p>
+                  <p className="font-korean text-sm text-muted-foreground">
+                    보유: {starFragments} 별 조각
+                  </p>
+                  <Button
+                    onClick={() => {
+                      setUseGuaranteedUpgrade(true);
+                      upgradePet();
+                    }}
+                    variant="hero"
+                    className="w-full"
+                    disabled={loading || starFragments < FRAGMENTS_FOR_GUARANTEED_UPGRADE}
+                  >
+                    {loading ? "강화 중..." : "확정 강화"}
+                  </Button>
+                </div>
               </div>
             )}
           </DialogContent>

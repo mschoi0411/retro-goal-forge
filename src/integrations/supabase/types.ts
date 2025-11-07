@@ -497,11 +497,42 @@ export type Database = {
         }
         Relationships: []
       }
+      upgrade_logs: {
+        Row: {
+          created_at: string
+          current_stars: number
+          fragments_gained: number | null
+          id: string
+          pet_id: string
+          success: boolean
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_stars: number
+          fragments_gained?: number | null
+          id?: string
+          pet_id: string
+          success: boolean
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_stars?: number
+          fragments_gained?: number | null
+          id?: string
+          pet_id?: string
+          success?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_powder: {
         Row: {
           amount: number | null
           created_at: string | null
           id: string
+          star_fragments: number | null
           updated_at: string | null
           user_id: string
         }
@@ -509,6 +540,7 @@ export type Database = {
           amount?: number | null
           created_at?: string | null
           id?: string
+          star_fragments?: number | null
           updated_at?: string | null
           user_id: string
         }
@@ -516,8 +548,42 @@ export type Database = {
           amount?: number | null
           created_at?: string | null
           id?: string
+          star_fragments?: number | null
           updated_at?: string | null
           user_id?: string
+        }
+        Relationships: []
+      }
+      weekly_rankings: {
+        Row: {
+          created_at: string
+          id: string
+          rank: number | null
+          reward_garu: number | null
+          total_exp: number
+          user_id: string
+          week_end: string
+          week_start: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          rank?: number | null
+          reward_garu?: number | null
+          total_exp?: number
+          user_id: string
+          week_end: string
+          week_start: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          rank?: number | null
+          reward_garu?: number | null
+          total_exp?: number
+          user_id?: string
+          week_end?: string
+          week_start?: string
         }
         Relationships: []
       }
