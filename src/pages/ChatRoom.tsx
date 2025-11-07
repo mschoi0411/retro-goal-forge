@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { Send, ArrowLeft, Heart } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { EXP_CONSTANTS, checkLevelUp, getExpRequiredForNextLevel } from "@/utils/petLevel";
 
 interface Message {
   id: string;
@@ -38,6 +39,7 @@ interface MovingPet {
   name: string;
   level: number;
   rarity: "common" | "rare" | "epic" | "legendary";
+  user_id: string;
   x: number;
   y: number;
   speedX: number;
@@ -318,6 +320,7 @@ export default function ChatRoom() {
             name: pet.name,
             level: pet.level,
             rarity: pet.rarity as "common" | "rare" | "epic" | "legendary",
+            user_id: p.user_id,
             x,
             y,
             speedX,
@@ -366,6 +369,116 @@ export default function ChatRoom() {
     });
   };
 
+  const handlePetClick = async (petId: string, petOwnerId: string) => {
+    if (!currentUserId) return;
+    if (currentUserId === petOwnerId) {
+      toast({
+        title: "자신의 펫은 클릭할 수 없습니다",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // 오늘 이미 클릭했는지 확인
+      const { data: existingClick } = await supabase
+        .from('pet_clicks')
+        .select('id')
+        .eq('pet_id', petId)
+        .eq('clicked_by_user_id', currentUserId)
+        .eq('click_date', new Date().toISOString().split('T')[0])
+        .maybeSingle();
+
+      if (existingClick) {
+        toast({
+          title: "이미 오늘 이 펫을 응원했습니다",
+        });
+        return;
+      }
+
+      // 클릭 기록
+      const { error: clickError } = await supabase
+        .from('pet_clicks')
+        .insert({
+          pet_id: petId,
+          clicked_by_user_id: currentUserId,
+        });
+
+      if (clickError) throw clickError;
+
+      // 펫의 현재 경험치와 레벨 가져오기
+      const { data: pet, error: petError } = await supabase
+        .from('pets')
+        .select('experience, level, user_id')
+        .eq('id', petId)
+        .single();
+
+      if (petError) throw petError;
+
+      const newExp = pet.experience + EXP_CONSTANTS.PET_CLICK;
+      const { newLevel, totalReward } = checkLevelUp(newExp, pet.level);
+
+      // 레벨업 발생 시
+      if (newLevel > pet.level) {
+        const expRequired = getExpRequiredForNextLevel(pet.level);
+        // 펫 경험치와 레벨 업데이트
+        const { error: updatePetError } = await supabase
+          .from('pets')
+          .update({
+            experience: newExp - expRequired,
+            level: newLevel,
+          })
+          .eq('id', petId);
+
+        if (updatePetError) throw updatePetError;
+
+        // 가루 보상 지급
+        const { data: powderData, error: powderError } = await supabase
+          .from('user_powder')
+          .select('amount')
+          .eq('user_id', pet.user_id)
+          .single();
+
+        if (powderError) throw powderError;
+
+        const { error: updatePowderError } = await supabase
+          .from('user_powder')
+          .update({ amount: powderData.amount + totalReward })
+          .eq('user_id', pet.user_id);
+
+        if (updatePowderError) throw updatePowderError;
+
+        toast({
+          title: "🎉 펫이 레벨업했습니다!",
+          description: `레벨 ${newLevel}이 되었습니다! +${totalReward} 가루 획득`,
+        });
+      } else {
+        // 경험치만 업데이트
+        const { error: updatePetError } = await supabase
+          .from('pets')
+          .update({ experience: newExp })
+          .eq('id', petId);
+
+        if (updatePetError) throw updatePetError;
+
+        toast({
+          title: "펫을 응원했습니다!",
+          description: `+${EXP_CONSTANTS.PET_CLICK} 경험치`,
+        });
+      }
+
+      // 참가자 목록 새로고침
+      loadParticipants();
+    } catch (error) {
+      console.error('Error clicking pet:', error);
+      toast({
+        title: "펫 클릭 실패",
+        description: "다시 시도해주세요",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
@@ -393,20 +506,21 @@ export default function ChatRoom() {
         {movingPets.map((pet) => (
           <div
             key={pet.id}
-            className="absolute z-10"
+            className="absolute z-10 cursor-pointer"
             style={{ left: `${pet.x}px`, top: `${pet.y}px` }}
+            onClick={() => handlePetClick(pet.id, pet.user_id)}
           >
             <div className="relative">
               <div
                 className={`w-8 h-8 bg-gradient-to-br ${
                   rarityGradients[pet.rarity]
-                } rounded-lg flex items-center justify-center shadow-neon animate-bounce-walk`}
+                } rounded-lg flex items-center justify-center shadow-neon animate-bounce-walk transition-transform hover:scale-110`}
               >
                 <Heart className="w-4 h-4 text-primary-foreground animate-pulse-glow" />
               </div>
               <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
                 <div className="bg-card border border-primary px-2 py-0.5 rounded-sm shadow-neon text-[10px] font-korean">
-                  {pet.name}
+                  {pet.name} Lv.{pet.level}
                 </div>
               </div>
             </div>

@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { EXP_CONSTANTS, checkLevelUp, getExpRequiredForNextLevel } from "@/utils/petLevel";
 
 export default function Community() {
   const [activeTab, setActiveTab] = useState("challenges");
@@ -199,7 +200,7 @@ export default function Community() {
     const isLiked = userLikes.has(postId);
 
     if (isLiked) {
-      // Unlike
+      // Unlike - 좋아요 취소 시 경험치 감소 로직 (선택사항)
       await supabase
         .from("post_likes")
         .delete()
@@ -216,7 +217,7 @@ export default function Community() {
         [postId]: Math.max(0, (prev[postId] || 0) - 1),
       }));
     } else {
-      // Like
+      // Like - 좋아요 시 게시글 작성자에게 경험치 지급
       await supabase
         .from("post_likes")
         .insert({
@@ -229,6 +230,103 @@ export default function Community() {
         ...prev,
         [postId]: (prev[postId] || 0) + 1,
       }));
+
+      // 게시글 작성자 확인
+      const { data: post } = await supabase
+        .from('posts')
+        .select('user_id')
+        .eq('id', postId)
+        .single();
+
+      if (post && post.user_id !== session.user.id) {
+        // 오늘 날짜
+        const today = new Date().toISOString().split('T')[0];
+
+        // 게시글별 일일 경험치 상한 확인
+        const { data: postExp } = await supabase
+          .from('post_like_exp')
+          .select('exp_gained')
+          .eq('post_id', postId)
+          .eq('user_id', post.user_id)
+          .eq('exp_date', today)
+          .maybeSingle();
+
+        // 계정 전체 일일 경험치 상한 확인
+        const { data: allPostsExp } = await supabase
+          .from('post_like_exp')
+          .select('exp_gained')
+          .eq('user_id', post.user_id)
+          .eq('exp_date', today);
+
+        const totalDailyExp = allPostsExp?.reduce((sum, record) => sum + record.exp_gained, 0) || 0;
+        const postDailyExp = postExp?.exp_gained || 0;
+
+        // 상한 체크
+        if (postDailyExp < EXP_CONSTANTS.POST_DAILY_LIMIT && totalDailyExp < EXP_CONSTANTS.DAILY_FEED_LIMIT) {
+          const expToAdd = EXP_CONSTANTS.POST_LIKE;
+
+          // 경험치 기록 업데이트
+          if (postExp) {
+            await supabase
+              .from('post_like_exp')
+              .update({ exp_gained: postDailyExp + expToAdd })
+              .eq('post_id', postId)
+              .eq('user_id', post.user_id)
+              .eq('exp_date', today);
+          } else {
+            await supabase
+              .from('post_like_exp')
+              .insert({
+                post_id: postId,
+                user_id: post.user_id,
+                exp_gained: expToAdd,
+              });
+          }
+
+          // 작성자의 대표 펫에 경험치 추가
+          const { data: mainPet } = await supabase
+            .from('pets')
+            .select('id, experience, level')
+            .eq('user_id', post.user_id)
+            .eq('is_main', true)
+            .maybeSingle();
+
+          if (mainPet) {
+            const newExp = mainPet.experience + expToAdd;
+            const { newLevel, totalReward } = checkLevelUp(newExp, mainPet.level);
+
+            if (newLevel > mainPet.level) {
+              const expRequired = getExpRequiredForNextLevel(mainPet.level);
+              await supabase
+                .from('pets')
+                .update({
+                  experience: newExp - expRequired,
+                  level: newLevel,
+                })
+                .eq('id', mainPet.id);
+
+              // 가루 보상 지급
+              const { data: powderData } = await supabase
+                .from('user_powder')
+                .select('amount')
+                .eq('user_id', post.user_id)
+                .single();
+
+              if (powderData) {
+                await supabase
+                  .from('user_powder')
+                  .update({ amount: powderData.amount + totalReward })
+                  .eq('user_id', post.user_id);
+              }
+            } else {
+              await supabase
+                .from('pets')
+                .update({ experience: newExp })
+                .eq('id', mainPet.id);
+            }
+          }
+        }
+      }
     }
   };
 

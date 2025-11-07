@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import PetRevealAnimation from "@/components/PetRevealAnimation";
 import { getRandomPetName } from "@/data/petNames";
+import { getExpProgress, getExpRequiredForNextLevel } from "@/utils/petLevel";
 
 interface Pet {
   id: string;
@@ -420,9 +421,14 @@ export default function Pets() {
                 <div className="space-y-1">
                   <div className="flex justify-between text-xs font-korean text-muted-foreground">
                     <span>경험치</span>
-                    <span>{pet.experience}%</span>
+                    <span>
+                      {pet.experience} / {getExpRequiredForNextLevel(pet.level) || "MAX"}
+                    </span>
                   </div>
-                  <Progress value={pet.experience} className="h-2" />
+                  <Progress 
+                    value={getExpProgress(pet.experience, pet.level)} 
+                    className="h-2" 
+                  />
                 </div>
 
                 <div className="flex gap-2">

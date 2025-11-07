@@ -273,6 +273,38 @@ export type Database = {
         }
         Relationships: []
       }
+      pet_clicks: {
+        Row: {
+          click_date: string
+          clicked_by_user_id: string
+          created_at: string
+          id: string
+          pet_id: string
+        }
+        Insert: {
+          click_date?: string
+          clicked_by_user_id: string
+          created_at?: string
+          id?: string
+          pet_id: string
+        }
+        Update: {
+          click_date?: string
+          clicked_by_user_id?: string
+          created_at?: string
+          id?: string
+          pet_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pet_clicks_pet_id_fkey"
+            columns: ["pet_id"]
+            isOneToOne: false
+            referencedRelation: "pets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pets: {
         Row: {
           created_at: string | null
@@ -343,6 +375,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "post_comments_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      post_like_exp: {
+        Row: {
+          created_at: string
+          exp_date: string
+          exp_gained: number
+          id: string
+          post_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          exp_date?: string
+          exp_gained?: number
+          id?: string
+          post_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          exp_date?: string
+          exp_gained?: number
+          id?: string
+          post_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_like_exp_post_id_fkey"
             columns: ["post_id"]
             isOneToOne: false
             referencedRelation: "posts"
