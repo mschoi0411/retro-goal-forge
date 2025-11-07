@@ -15,6 +15,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import PetRevealAnimation from "@/components/PetRevealAnimation";
+import UpgradeAnimation from "@/components/UpgradeAnimation";
 import { getRandomPetName } from "@/data/petNames";
 import { getExpProgress, getExpRequiredForNextLevel } from "@/utils/petLevel";
 import { 
@@ -61,6 +62,8 @@ export default function Pets() {
   const [editingPet, setEditingPet] = useState<Pet | null>(null);
   const [editName, setEditName] = useState("");
   const [useGuaranteedUpgrade, setUseGuaranteedUpgrade] = useState(false);
+  const [showUpgradeAnimation, setShowUpgradeAnimation] = useState(false);
+  const [upgradeAnimationData, setUpgradeAnimationData] = useState<{ success: boolean; fragmentsGained: number } | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -362,30 +365,37 @@ export default function Pets() {
         fragments_gained: fragmentsGained,
       });
 
-      // Update pet stars if successful
-      if (success) {
-        await supabase
-          .from("pets")
-          .update({ stars: selectedPet.stars + 1 })
-          .eq("id", selectedPet.id);
-
-        toast({
-          title: "강화 성공!",
-          description: `${selectedPet.name}이(가) ★${selectedPet.stars + 1}로 강화되었습니다!`,
-        });
-      } else {
-        toast({
-          title: "강화 실패",
-          description: `별 조각 ${fragmentsGained}개를 획득했습니다. (${starFragments + fragmentsGained}/${FRAGMENTS_FOR_GUARANTEED_UPGRADE})`,
-          variant: "destructive",
-        });
-      }
-
+      // Show upgrade animation
+      setUpgradeAnimationData({ success, fragmentsGained });
+      setShowUpgradeAnimation(true);
       setOpenUpgrade(false);
-      setSelectedPet(null);
-      setUseGuaranteedUpgrade(false);
-      loadPets();
-      loadPowder();
+
+      // Wait for animation to complete before updating
+      setTimeout(async () => {
+        // Update pet stars if successful
+        if (success) {
+          await supabase
+            .from("pets")
+            .update({ stars: selectedPet.stars + 1 })
+            .eq("id", selectedPet.id);
+
+          toast({
+            title: "강화 성공!",
+            description: `${selectedPet.name}이(가) ★${selectedPet.stars + 1}로 강화되었습니다!`,
+          });
+        } else {
+          toast({
+            title: "강화 실패",
+            description: `별 조각 ${fragmentsGained}개를 획득했습니다. (${starFragments + fragmentsGained}/${FRAGMENTS_FOR_GUARANTEED_UPGRADE})`,
+            variant: "destructive",
+          });
+        }
+
+        setSelectedPet(null);
+        setUseGuaranteedUpgrade(false);
+        loadPets();
+        loadPowder();
+      }, 2500);
     } catch (error) {
       console.error("Upgrade error:", error);
       toast({
@@ -682,6 +692,17 @@ export default function Pets() {
             petName={revealPet.name}
             rarity={revealPet.rarity}
             onComplete={handleRevealComplete}
+          />
+        )}
+
+        {showUpgradeAnimation && upgradeAnimationData && (
+          <UpgradeAnimation
+            success={upgradeAnimationData.success}
+            fragmentsGained={upgradeAnimationData.fragmentsGained}
+            onComplete={() => {
+              setShowUpgradeAnimation(false);
+              setUpgradeAnimationData(null);
+            }}
           />
         )}
       </div>

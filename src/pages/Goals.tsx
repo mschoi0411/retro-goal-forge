@@ -24,6 +24,7 @@ import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { calculateGaruWithLevelBonus } from "@/utils/petLevel";
+import RewardTooltip from "@/components/RewardTooltip";
 
 
 interface Goal {
@@ -71,6 +72,8 @@ export default function Goals() {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredEvents, setFilteredEvents] = useState<CalendarEvent[]>([]);
+  const [showRewardTooltip, setShowRewardTooltip] = useState(false);
+  const [rewardTooltipData, setRewardTooltipData] = useState<{ baseReward: number; bonusPercent: number; totalReward: number } | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -362,15 +365,43 @@ export default function Goals() {
       }
 
       const bonusPercent = Math.round(((finalRewardWithBonus - baseFinalReward) / baseFinalReward) * 100);
+      
+      // Show reward tooltip
+      setRewardTooltipData({
+        baseReward: baseFinalReward,
+        bonusPercent,
+        totalReward: finalRewardWithBonus
+      });
+      setShowRewardTooltip(true);
+      
+      setTimeout(() => {
+        setShowRewardTooltip(false);
+        setRewardTooltipData(null);
+      }, 3000);
+
       toast({
         title: "전체 목표 달성!",
-        description: `${finalRewardWithBonus} 가루 획득! (기본 ${baseFinalReward} + 레벨 보너스 ${bonusPercent}%)`,
+        description: `${finalRewardWithBonus} 가루 획득!`,
       });
     } else {
       const bonusPercent = Math.round(((dailyRewardWithBonus - baseDailyReward) / baseDailyReward) * 100);
+      
+      // Show reward tooltip
+      setRewardTooltipData({
+        baseReward: baseDailyReward,
+        bonusPercent,
+        totalReward: dailyRewardWithBonus
+      });
+      setShowRewardTooltip(true);
+      
+      setTimeout(() => {
+        setShowRewardTooltip(false);
+        setRewardTooltipData(null);
+      }, 3000);
+
       toast({
         title: "오늘의 목표 완료!",
-        description: `${dailyRewardWithBonus} 가루 획득! (기본 ${baseDailyReward} + 레벨 보너스 ${bonusPercent}%)`,
+        description: `${dailyRewardWithBonus} 가루 획득!`,
       });
     }
 
@@ -936,6 +967,15 @@ export default function Goals() {
             )}
           </div>
         </div>
+
+        {showRewardTooltip && rewardTooltipData && (
+          <RewardTooltip
+            baseReward={rewardTooltipData.baseReward}
+            bonusPercent={rewardTooltipData.bonusPercent}
+            totalReward={rewardTooltipData.totalReward}
+            show={showRewardTooltip}
+          />
+        )}
       </div>
     </div>
   );

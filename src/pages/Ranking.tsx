@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { LineChart, Line, ResponsiveContainer } from "recharts";
 
 interface RankingEntry {
   user_id: string;
@@ -12,6 +13,7 @@ interface RankingEntry {
   rank: number;
   reward_garu: number;
   display_name?: string;
+  daily_exp?: number[]; // Last 7 days EXP
 }
 
 const RANKING_REWARDS: Record<number, number> = {
@@ -91,6 +93,7 @@ export default function Ranking() {
 
       // Calculate total EXP per user
       const userExpMap = new Map<string, number>();
+      const userDailyExpMap = new Map<string, number[]>();
 
       // Add pet click EXP (need to get pet owners)
       if (petClickData) {
@@ -102,11 +105,33 @@ export default function Ranking() {
 
         const petOwnerMap = new Map(petsData?.map(p => [p.id, p.user_id]) || []);
 
+        // Group by date and user
+        const dailyExpByUser = new Map<string, Map<string, number>>();
+        
         petClickData.forEach((click) => {
           const ownerId = petOwnerMap.get(click.pet_id);
           if (ownerId) {
             userExpMap.set(ownerId, (userExpMap.get(ownerId) || 0) + 5);
+            
+            // Track daily EXP
+            if (!dailyExpByUser.has(ownerId)) {
+              dailyExpByUser.set(ownerId, new Map());
+            }
+            const userDailyMap = dailyExpByUser.get(ownerId)!;
+            userDailyMap.set(click.click_date, (userDailyMap.get(click.click_date) || 0) + 5);
           }
+        });
+
+        // Convert to array for last 7 days
+        dailyExpByUser.forEach((dailyMap, userId) => {
+          const dailyArray: number[] = [];
+          for (let i = 6; i >= 0; i--) {
+            const checkDate = new Date(now);
+            checkDate.setDate(now.getDate() - i);
+            const dateStr = checkDate.toISOString().split('T')[0];
+            dailyArray.push(dailyMap.get(dateStr) || 0);
+          }
+          userDailyExpMap.set(userId, dailyArray);
         });
       }
 
@@ -114,6 +139,17 @@ export default function Ranking() {
       if (postLikeData) {
         postLikeData.forEach((like) => {
           userExpMap.set(like.user_id, (userExpMap.get(like.user_id) || 0) + like.exp_gained);
+          
+          // Track daily EXP
+          if (!userDailyExpMap.has(like.user_id)) {
+            userDailyExpMap.set(like.user_id, new Array(7).fill(0));
+          }
+          
+          const dateIndex = Math.floor((now.getTime() - new Date(like.exp_date).getTime()) / (1000 * 60 * 60 * 24));
+          if (dateIndex >= 0 && dateIndex < 7) {
+            const dailyArray = userDailyExpMap.get(like.user_id)!;
+            dailyArray[6 - dateIndex] += like.exp_gained;
+          }
         });
       }
 
@@ -139,6 +175,7 @@ export default function Ranking() {
         rank: index + 1,
         reward_garu: RANKING_REWARDS[index + 1] || 0,
         display_name: profileMap.get(user.user_id) || "알 수 없음",
+        daily_exp: userDailyExpMap.get(user.user_id) || new Array(7).fill(0),
       }));
 
       setRankings(rankingEntries);
@@ -258,12 +295,37 @@ export default function Ranking() {
                         </div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="font-pixel text-lg text-warning">
-                        +{entry.reward_garu}
-                      </div>
-                      <div className="font-korean text-xs text-muted-foreground">
-                        가루
+                    <div className="flex items-center gap-4">
+                      {/* Sparkline Graph */}
+                      {entry.daily_exp && entry.daily_exp.length > 0 && (
+                        <div className="w-24 h-12">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={entry.daily_exp.map((exp, i) => ({ exp, day: i }))}>
+                              <Line 
+                                type="monotone" 
+                                dataKey="exp" 
+                                stroke={entry.user_id === currentUserId ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))"} 
+                                strokeWidth={2}
+                                dot={false}
+                              />
+                            </LineChart>
+                          </ResponsiveContainer>
+                          <div className="text-center mt-1">
+                            <span className="font-korean text-xs text-muted-foreground">
+                              오늘: <span className={cn("font-bold", entry.user_id === currentUserId && "text-primary")}>
+                                {entry.daily_exp[6]}
+                              </span>
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                      <div className="text-right">
+                        <div className="font-pixel text-lg text-warning">
+                          +{entry.reward_garu}
+                        </div>
+                        <div className="font-korean text-xs text-muted-foreground">
+                          가루
+                        </div>
                       </div>
                     </div>
                   </div>
